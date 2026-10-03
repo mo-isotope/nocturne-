@@ -1,3 +1,16 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:42306a7bf85f00adf7ac8636d65e5737012e3386afddbf4a1af3de14f7eee223
-size 321
+{
+  "name": "nocturne-relais",
+  "version": "1.0.0",
+  "description": "Serveur relais pour les parties a deux de Nocturne",
+  "main": "serveur.js",
+  "scripts": {
+    "start": "node serveur.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.11.0",
+    "ws": "^8.18.0"
+  }
+}
