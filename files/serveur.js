@@ -37,6 +37,16 @@ const TYPES = {
 const serveur = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
 
+  // La page peut être servie par un autre site (site statique) : on autorise
+  // les appels depuis n'importe quelle origine pour /etat et /scores.
+  if (url === '/etat' || url === '/scores') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  }
+
   // état du relais, pratique pour vérifier que tout tourne
   if (url === '/etat') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
