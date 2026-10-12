@@ -1,0 +1,9 @@
+{
+  // Site du jeu sur Cloudflare (Worker sans code, fichiers statiques seuls).
+  // Les chemins sont relatifs à ce fichier : il doit rester à la racine du dépôt.
+  "name": "nocturne",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./files"
+  }
+}
