@@ -3,3 +3,7 @@ files/package.json -filter -diff -merge text
 files/package-lock.json -filter -diff -merge text
 files/serveur.js -filter -diff -merge text
 files/stockage.js -filter -diff -merge text
+files/_headers -filter -diff -merge text
+files/_redirects -filter -diff -merge text
+files/.assetsignore -filter -diff -merge text
+files/wrangler.jsonc -filter -diff -merge text

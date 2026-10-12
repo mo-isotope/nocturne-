@@ -20,6 +20,15 @@ const salles = new Map();          // code -> { hote, invite }
 // Le serveur fait deux choses : il sert la page du jeu, et il relaie les
 // messages entre les deux joueurs. Le jeu et le relais sont donc au même
 // endroit, ce qui évite d'avoir deux adresses à retenir.
+// En ligne, la page et ses fichiers (sprites, musiques) sont servis par le
+// site statique : le relais ne garde que /etat, /scores et le WebSocket, et
+// ne consomme plus de bande passante pour les MP3. Render définit RENDER ;
+// SERVIR_FICHIERS=1 ou 0 force le choix. En local, il sert tout.
+const SERVIR_FICHIERS = process.env.SERVIR_FICHIERS
+  ? process.env.SERVIR_FICHIERS !== '0'
+  : !process.env.RENDER;
+// adresse du site statique, pour renvoyer ceux qui ouvrent encore le relais
+const SITE_STATIQUE = process.env.SITE_STATIQUE || '';
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'text/javascript; charset=utf-8',
@@ -102,6 +111,15 @@ const serveur = http.createServer((req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end('{"erreur":"donnees invalides"}');
     });
+  }
+
+  if (!SERVIR_FICHIERS) {
+    if (SITE_STATIQUE && url === '/') {
+      res.writeHead(302, { Location: SITE_STATIQUE });
+      return res.end();
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Ce serveur est le relais de Nocturne : le jeu est servi ailleurs.');
   }
 
   // la racine renvoie le jeu

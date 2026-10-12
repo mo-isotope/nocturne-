@@ -1,5 +1,14 @@
-server.js
+serveur.js
+stockage.js
+test_decor.js
 package.json
 package-lock.json
 node_modules
+wrangler.jsonc
+LISEZMOI.md
+*.original
+*.avant-*
+*.avec-*
+*.before-*
+*.pre-*
 .git*
