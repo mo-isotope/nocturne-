@@ -1,0 +1,7 @@
+# sauvegardes locales, gardées sur le disque mais pas dans le dépôt
+files/*.avant-*
+files/*.avec-*
+files/*.before-*
+files/*.pre-*
+files/*.original
+files_96k/

@@ -1,3 +1,189 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:99bde63f0381d33d244d9b0d68f2c1831eff18c02e19f6b52045e26601f8bb5e
-size 8311
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NOCTURNE — sprites</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nuit:#141023; --nuit2:#1c1730; --os:#e8e0c8; --sang:#c0392e;
+    --menthe:#6fd3b0; --ambre:#e8a33c; --brume:#8a889a;
+    --display:'Bricolage Grotesque', system-ui, sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+  }
+  :root{ --pad:clamp(14px,3vw,32px); }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--nuit);color:var(--os);font-family:var(--display);overflow-x:hidden}
+  body{padding:20px var(--pad) 60px}
+  h1{font-size:clamp(24px,4vw,36px);font-weight:800;letter-spacing:-.03em}
+  .sub{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--brume);
+    text-transform:uppercase;margin-top:6px}
+  .barre{position:sticky;top:0;z-index:5;background:rgba(20,16,35,.92);backdrop-filter:blur(6px);
+    margin:18px calc(var(--pad) * -1) 0;padding:12px var(--pad);border-bottom:1px solid rgba(233,227,210,.14);
+    display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center}
+  .champ{display:flex;flex-direction:column;gap:4px}
+  .champ label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--brume)}
+  input[type=text]{background:rgba(233,227,210,.06);border:1px solid rgba(233,227,210,.22);
+    color:var(--os);font-family:var(--mono);font-size:13px;padding:7px 10px;min-width:180px}
+  select{background:rgba(233,227,210,.06);border:1px solid rgba(233,227,210,.22);
+    color:var(--os);font-family:var(--mono);font-size:12px;padding:7px 8px}
+  input[type=range]{width:110px}
+  .case{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--os)}
+  .compte{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--brume)}
+  section{margin-top:30px}
+  .titre-section{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);
+    font-size:12px;letter-spacing:.28em;color:var(--brume);text-transform:uppercase;
+    border-bottom:1px solid rgba(233,227,210,.14);padding-bottom:8px;margin-bottom:14px}
+  .titre-section b{color:var(--os);font-size:16px;letter-spacing:0;text-transform:none;font-family:var(--display)}
+  .grille{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  .carte{background:rgba(233,227,210,.03);border:1px solid rgba(233,227,210,.14);overflow:hidden}
+  .carte canvas{display:block;width:100%;height:170px;image-rendering:pixelated}
+  .carte .nom{font-family:var(--mono);font-size:11px;padding:8px 10px;display:flex;
+    justify-content:space-between;gap:6px;border-top:1px solid rgba(233,227,210,.1)}
+  .carte .nom b{color:var(--os);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .carte .nom span{color:var(--brume)}
+  .vide{font-family:var(--mono);font-size:12px;color:var(--brume);padding:20px 0}
+</style>
+</head>
+<body>
+
+<h1>Visionneuse de sprites</h1>
+<div class="sub">Nocturne — dessin uniquement, aucune logique de jeu chargée</div>
+
+<div class="barre">
+  <div class="champ">
+    <label>Recherche</label>
+    <input type="text" id="recherche" placeholder="nom du sprite…" spellcheck="false">
+  </div>
+  <div class="champ">
+    <label>Rendu</label>
+    <select id="mode">
+      <option value="">Contour</option>
+      <option value="blanc">Silhouette blanche</option>
+      <option value="nu">Brut (sans contour)</option>
+      <option value="rim">Liseré (rim light)</option>
+    </select>
+  </div>
+  <div class="champ">
+    <label>Fond</label>
+    <select id="fond">
+      <option value="nuit">Nuit</option>
+      <option value="clair">Clair</option>
+      <option value="damier">Damier</option>
+    </select>
+  </div>
+  <div class="champ">
+    <label>Vitesse d'anim.</label>
+    <input type="range" id="vitesse" min="80" max="900" step="20" value="380">
+  </div>
+  <label class="case"><input type="checkbox" id="animer" checked> Animer</label>
+  <label class="case"><input type="checkbox" id="miroir"> Miroir</label>
+  <label class="case"><input type="checkbox" id="decors"> Voir les décors</label>
+  <div class="compte" id="compte"></div>
+</div>
+
+<div id="sections"></div>
+
+<script src="sprites.js"></script>
+<script>
+/* Catégorise chaque sprite par le préfixe de sa clé — la même convention
+   que celle utilisée dans SPRITES/CFG.ennemis/CFG.personnages. */
+function categorie(nom){
+  if(nom.startsWith('s_')) return 'monstres';
+  if(nom.startsWith('b_')) return 'boss';
+  if(nom.startsWith('d_')||nom.startsWith('o_')) return 'decors';
+  return 'personnages';
+}
+const TITRES={ personnages:'Personnages', monstres:'Monstres', boss:'Boss & colosses', decors:'Décors' };
+const ORDRE=['personnages','monstres','boss','decors'];
+
+const noms=[...new Set([...Object.keys(SPRITES), ...Object.keys(VECTO)])].sort();
+const items=noms.map(nom=>({
+  nom, cat:categorie(nom),
+  vecto: !!VECTO[nom],
+  frames: SPR[nom] ? SPR[nom].cycle.length : 1,
+}));
+
+const FONDS={ nuit:'#141023', clair:'#d8d2c4', damier:null };
+function peindreFond(c,x,w,h){
+  const f=$('fond').value;
+  if(f==='damier'){
+    const t=14;
+    for(let j=0;j*t<h;j++) for(let i=0;i*t<w;i++){
+      x.fillStyle=(i+j)%2===0?'#2a2438':'#332c46';
+      x.fillRect(i*t,j*t,t,t);
+    }
+    return;
+  }
+  x.fillStyle=FONDS[f]||FONDS.nuit; x.fillRect(0,0,w,h);
+}
+
+const $=id=>document.getElementById(id);
+const sections=$('sections');
+let cartes=[]; // {item, canvas, x}
+
+function construire(){
+  sections.innerHTML=''; cartes=[];
+  const filtre=$('recherche').value.trim().toLowerCase();
+  const avecDecors=$('decors').checked;
+  const compte={personnages:0,monstres:0,boss:0,decors:0};
+
+  for(const cat of ORDRE){
+    if(cat==='decors' && !avecDecors) continue;
+    const liste=items.filter(it=>it.cat===cat && it.nom.toLowerCase().includes(filtre));
+    if(!liste.length) continue;
+    compte[cat]=liste.length;
+    const sec=document.createElement('section');
+    sec.innerHTML=`<div class="titre-section"><b>${TITRES[cat]}</b><span>${liste.length} sprite${liste.length>1?'s':''}</span></div>`;
+    const grille=document.createElement('div'); grille.className='grille';
+    for(const it of liste){
+      const carte=document.createElement('div'); carte.className='carte';
+      const cv=document.createElement('canvas'); cv.width=220; cv.height=200;
+      const cvx=cv.getContext('2d'); cvx.imageSmoothingEnabled=false;
+      carte.appendChild(cv);
+      const nomDiv=document.createElement('div'); nomDiv.className='nom';
+      nomDiv.innerHTML=`<b>${it.nom}</b><span>${it.vecto?'vecteur':it.frames+' img'}</span>`;
+      carte.appendChild(nomDiv);
+      grille.appendChild(carte);
+      cartes.push({item:it, cv, x:cv.getContext('2d')});
+    }
+    sec.appendChild(grille);
+    sections.appendChild(sec);
+  }
+  if(!cartes.length) sections.innerHTML='<p class="vide">Aucun sprite ne correspond à la recherche.</p>';
+  $('compte').textContent=`${cartes.length} affichés — ${items.length} au total`;
+}
+
+function dessinerTout(){
+  const mode=$('mode').value||null;
+  const flip=$('miroir').checked;
+  const animer=$('animer').checked;
+  const vitesse=+$('vitesse').value; // ms par pas d'animation
+  const t=performance.now();
+  for(const c of cartes){
+    const {item, cv, x}=c;
+    const w=cv.width, h=cv.height;
+    peindreFond(x,x,w,h);
+    if(item.vecto){
+      const pas=animer?(t/(vitesse*3))%1:0.25;
+      x.save();
+      if(flip){ x.translate(w,0); x.scale(-1,1); }
+      VECTO[item.nom](x, w/2, h-6, h*0.86, pas, false, 1);
+      x.restore();
+    } else if(SPR[item.nom]){
+      ctx=x; // sprites.js dessine toujours sur le contexte global `ctx`
+      const frame=animer?imageCycle(item.nom, Math.floor(t/vitesse)):imageCycle(item.nom,0);
+      poserSprite(item.nom, frame, w/2, h/2, h*0.9, flip, 1, mode);
+    }
+  }
+}
+
+['recherche','decors'].forEach(id=>$(id).addEventListener('input',construire));
+construire();
+SPR_PRET.then(()=>setInterval(dessinerTout, 60));
+</script>
+</body>
+</html>
