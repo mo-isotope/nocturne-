@@ -2440,7 +2440,7 @@ addEventListener('keydown',e=>{ keys.add(e.code);
       if(e.code==='ShiftRight') declencherUltime(G.joueurs[1]);
     }
   }
-  if(G.etat==='levelup' && ['Digit1','Digit2','Digit3'].includes(e.code)) choisir(+e.code.slice(5)-1);
+  if((G.etat==='levelup'||NET.choix) && ['Digit1','Digit2','Digit3'].includes(e.code)) choisir(+e.code.slice(5)-1);
 });
 addEventListener('keyup',e=>keys.delete(e.code));
 function pads(){ return navigator.getGamepads? [...navigator.getGamepads()].filter(Boolean):[]; }
@@ -2495,6 +2495,7 @@ cv.addEventListener('touchend',toucherFin,{passive:false});
 cv.addEventListener('touchcancel',toucherFin,{passive:false});
 
 function dirJoueur(idx){
+  if(NET.actif && (NET.choix && idx===0 || G.joueurs[idx]&&G.joueurs[idx].choisit)) return {x:0,y:0};
   if(NET.actif && NET.role==='hote' && idx===1) return NET.entree;
   const s=sticks[idx];
   if(s && (s.nx||s.ny)) return {x:s.nx,y:s.ny};
@@ -3456,8 +3457,9 @@ function demarrer(){
   sticks[0]=null; sticks[1]=null; doigts.clear();
   const L=CFG.niveaux.find(l=>l.id===choixNiveau), c=CFG.regles.arene/2;
   G.triche=false; TRICHE.vitesse=1; majPanneauTriche();
+  NET.choix=null; $('levelup').classList.add('cache');
   G.goreAir=[]; G.goreSol=[]; GORE.ecran=0; GORE.vus.clear();
-  G.niveau=L; G.t=0; G.xp=0; G.lvl=1; G.niveauxDus=0; G.tues=0; G.spawnAcc=0; G.flash=0;
+  G.niveau=L; G.t=0; G.xp=0; G.lvl=1; G.niveauxDus=0; G.dus=[0,0]; G.choixNet=[null,null]; G.tues=0; G.spawnAcc=0; G.flash=0;
   G.prochaineFouille={don:45, arme:150};
   G.ennemis=[]; G.projs=[]; G.gemmes=[]; G.effets=[]; G.textes=[]; G.eclats=[]; G.butins=[]; G.shake=0;
   G.chutes=[]; G.clop={vague:0, prochaine:CFG.cloportes.debut};
@@ -3797,9 +3799,10 @@ function ramasser(b,j){
   else if(b.type==='vie'){                  // un niveau d'un coup, et une barre de vie plus longue
     const T=CFG.tresor;
     j.pvMax+=T.pvMax; j.pv=Math.min(j.pvMax,j.pv+T.soin);
-    G.flash=0.4; G.lvl++; G.niveauxDus++; $('niv').textContent=G.lvl;
+    G.flash=0.4; G.lvl++; niveauGagne(j); $('niv').textContent=G.lvl;
     G.textes.push({x:j.x,y:j.y-24,v:'NIVEAU ! +'+T.pvMax+' PV MAX',t:1.6,couleur:PAL.ambre});
-    sfx('niveau'); majFiches(); if(G.etat==='jeu') proposer();
+    sfx('niveau'); majFiches();
+    if(NET.actif) proposerReseau(j.idx); else if(G.etat==='jeu') proposer();
   }
   else if(b.type==='aimant'){
     for(const gm of G.gemmes) gm.attire=j;
@@ -3812,9 +3815,10 @@ function ramasser(b,j){
     majFiches();
   }
   else if(b.type==='orbe'){
-    G.flash=0.4; G.lvl++; G.niveauxDus++; $('niv').textContent=G.lvl;
+    G.flash=0.4; G.lvl++; niveauGagne(j); $('niv').textContent=G.lvl;
     G.textes.push({x:j.x,y:j.y-24,v:'NIVEAU !',t:1.3,couleur:PAL.ambre});
-    sfx('niveau'); if(G.etat==='jeu') proposer();
+    sfx('niveau');
+    if(NET.actif) proposerReseau(j.idx); else if(G.etat==='jeu') proposer();
   }
   eclats(b.x,b.y,10,d.couleur,150);
 }
@@ -3848,7 +3852,7 @@ function tuer(e){
 }
 function blesser(j,d){
   if(j.z>CFG.saut.hauteur*0.30) return;   // seulement au sommet du bond
-  if(j.invul>0||j.aterre||j.dieu) return;
+  if(j.invul>0||j.aterre||j.dieu||j.choisit) return;
   const reel=Math.max(1,d-j.armure);
   j.pv-=reel; j.invul=0.72;
   if(GORE.actif){ gicler(j.x, j.y, j.r*0.7, false, false);
@@ -4110,7 +4114,7 @@ function marquer(x,y,r,couleur,alpha){
 
 /* --- saut : un bond qui passe au-dessus des créatures --- */
 function sauter(j){
-  if(!j || j.aterre || j.saut>0 || j.sautCd>0) return;
+  if(!j || j.choisit || j.aterre || j.saut>0 || j.sautCd>0) return;
   j.saut=CFG.saut.duree; j.sautCd=CFG.saut.duree+CFG.saut.recharge;
   eclats(j.x, j.y+10, 7, PAL.pierreC, 120);
   sfx('casse');
@@ -4119,7 +4123,7 @@ function sauter(j){
 /* --- armes ultimes : puissantes, en réserve limitée --- */
 function declencherUltime(j){
   const U=CFG.ultimes[j.ultime.cle];
-  if(!U || j.ultime.charges<=0 || j.aterre || j.roue || j.aimant || j.chalumeau || j.souffle || j.tornade) return;
+  if(!U || j.choisit || j.ultime.charges<=0 || j.aterre || j.roue || j.aimant || j.chalumeau || j.souffle || j.tornade) return;
   j.ultime.charges--;
   if(U.elan){ lancerElan(j,U); majFiches(); return; }
   if(U.fil){ lancerAimant(j,U); majFiches(); return; }
@@ -4544,10 +4548,10 @@ function volerEnnemi(e,dt,g){
 function etiquetteNiveau(avant,max){
   return 'niv. '+avant+' → '+(avant+1)+(avant+1>=max?' · MAX':' sur '+max);
 }
-function proposer(){
+function tirerCartes(joueurs){
   const pool=[];
-  for(const j2 of G.joueurs){
-    const tag=G.joueurs.length>1?' · J'+(j2.idx+1):'';
+  for(const j2 of joueurs){
+    const tag=joueurs.length>1?' · J'+(j2.idx+1):'';
     // une arme ou un passif au maximum n'est jamais proposé ; la garde dans
     // 'appliquer' tient même si le niveau a bougé depuis le tirage des cartes
     for(const a of j2.armes) if(a.niveau<a.def.max)
@@ -4575,19 +4579,14 @@ function proposer(){
     for(;i<copie.length;i++){ r-=(copie[i].poids||1); if(r<=0) break; }
     choix.push(copie.splice(Math.min(i,copie.length-1),1)[0]);
   }
-  /* En ligne, personne ne choisit : l'hôte ne doit pas décider pour deux, et
-     l'invité ne peut pas cliquer. Une carte est tirée au hasard et appliquée. */
-  if(NET.actif){
-    const o=choix[(Math.random()*choix.length)|0];
-    o.appliquer();
-    G.niveauxDus=Math.max(0,G.niveauxDus-1);
-    const j0=G.joueurs[0];
-    if(j0) G.textes.push({x:j0.x,y:j0.y-48,v:o.nom,t:1.6,couleur:PAL.ambre});
-    sfx('niveau'); majFiches();
-    if(G.niveauxDus>0) proposer();
-    return;
-  }
-  G.choix=choix;
+  return choix;
+}
+function proposer(){
+  G.choix=tirerCartes(G.joueurs);
+  afficherCartes(G.choix, G.niveauxDus);
+  G.etat='levelup';
+}
+function afficherCartes(choix, reste){
   const c=$('cartes'); c.innerHTML='';
   choix.forEach((o,i)=>{
     const b=document.createElement('button'); b.className='carte';
@@ -4596,10 +4595,48 @@ function proposer(){
     b.onclick=()=>choisir(i); c.appendChild(b);
   });
   sfx('niveau'); volumeAudio(0.25);
-  $('reste').textContent = G.niveauxDus>1 ? '· '+G.niveauxDus+' EN ATTENTE' : '';
-  $('levelup').classList.remove('cache'); G.etat='levelup';
+  $('reste').textContent = reste>1 ? '· '+reste+' EN ATTENTE' : '';
+  $('levelup').classList.remove('cache');
+}
+/* En ligne, chacun choisit ses propres améliorations, et seul son écran
+   s'arrête : le monde continue pour l'autre. Le niveau revient à celui qui a
+   ramassé l'expérience qui l'a déclenché. Pendant qu'il choisit, son
+   personnage reste immobile et intouchable, et son image se fige.
+   L'hôte tire les cartes et les garde : l'invité ne reçoit que leurs textes
+   et renvoie le rang de celle qu'il prend. */
+function niveauGagne(j){
+  if(NET.actif && j) G.dus[j.idx]=(G.dus[j.idx]||0)+1;
+  else G.niveauxDus++;
+}
+function proposerReseau(idx){
+  const j=G.joueurs[idx];
+  if(!j || j.choisit || !G.dus[idx] || G.etat==='fin' || G.etat==='menu') return;
+  const cartes=tirerCartes([j]);
+  j.choisit=true; G.choixNet[idx]=cartes;
+  const vue=cartes.map(o=>({cat:o.cat, nom:o.nom, desc:o.desc}));
+  if(idx===NET.moi) ouvrirChoixReseau(vue, G.dus[idx]);
+  else envoyer({t:'lvl', c:vue, n:G.dus[idx]});
+}
+function appliquerChoixReseau(idx,i){
+  const j=G.joueurs[idx], cartes=G.choixNet[idx];
+  if(!j || !j.choisit || !cartes) return;
+  (cartes[i]||cartes[0]).appliquer();
+  G.dus[idx]=Math.max(0,G.dus[idx]-1); G.choixNet[idx]=null; j.choisit=false;
+  j.invul=Math.max(j.invul,1);          // un instant de grâce au retour dans la mêlée
+  majFiches();
+  if(G.dus[idx]>0) proposerReseau(idx);
+}
+function ouvrirChoixReseau(vue,n){ NET.choix=vue; afficherCartes(vue,n); }
+function fermerChoixReseau(){
+  NET.choix=null; $('levelup').classList.add('cache'); volumeAudio(0.65);
 }
 function choisir(i){
+  if(NET.actif){
+    if(!NET.choix || !NET.choix[i]) return;
+    fermerChoixReseau();
+    if(NET.role==='invite') envoyer({t:'pick', i}); else appliquerChoixReseau(NET.moi, i);
+    return;
+  }
   if(G.etat!=='levelup'||!G.choix[i]) return;
   G.choix[i].appliquer();
   G.niveauxDus=Math.max(0,G.niveauxDus-1);
@@ -4612,10 +4649,11 @@ function gagnerXp(v,j){
   G.xp+=v*j.mult.xp*(G.diff?G.diff.xp:1);
   let seuil=CFG.regles.xpNiveau(G.lvl);
   while(G.xp>=seuil){                      // plusieurs niveaux d'un coup : on les empile
-    G.xp-=seuil; G.lvl++; G.niveauxDus++;
+    G.xp-=seuil; G.lvl++; niveauGagne(j);
     seuil=CFG.regles.xpNiveau(G.lvl);
   }
-  if(G.niveauxDus>0 && G.etat==='jeu') proposer();
+  if(NET.actif) proposerReseau(j.idx);
+  else if(G.niveauxDus>0 && G.etat==='jeu') proposer();
   $('xpb').style.width=Math.min(100,G.xp/CFG.regles.xpNiveau(G.lvl)*100)+'%';
   $('niv').textContent=G.lvl;
 }
@@ -4629,6 +4667,7 @@ function togglePause(){
 function finir(victoire){
   if(NET.actif && NET.role==='hote') envoyer({t:'fin', v:!!victoire});
   G.etat='fin'; G.victoire=!!victoire;
+  NET.choix=null; $('levelup').classList.add('cache');
   scoreEnvoye=false;
   if($('btn-envoyer')) $('btn-envoyer').disabled=false;
   if($('fin-rang')) $('fin-rang').textContent='';
@@ -4985,13 +5024,13 @@ function boucle(now){
       const m=G.joueurs[NET.moi];
       if(m){ G.cam.x+=(m.x-G.cam.x)*Math.min(1,dt*7); G.cam.y+=(m.y-G.cam.y)*Math.min(1,dt*7); }
       G.shake=Math.max(0,G.shake-dt*28);
-      rendre(dt);
+      if(!NET.choix) rendre(dt);            // l'image se fige pendant notre choix
     }
     return;
   }
-  if(G.gel>0){ G.gel-=dt; if(G.etat!=='menu') rendre(0); return; }
+  if(G.gel>0){ G.gel-=dt; if(G.etat!=='menu' && !NET.choix) rendre(0); return; }
   if(G.etat==='jeu') for(let k=0;k<(TRICHE.vitesse||1) && G.etat==='jeu';k++) maj(dt);
-  if(G.etat!=='menu') rendre(dt);
+  if(G.etat!=='menu' && !NET.choix) rendre(dt);
 }
 requestAnimationFrame(boucle);
 
@@ -5067,6 +5106,18 @@ function maj(dt){
     for(const j of G.joueurs){
       j.x=clamp(j.x, mx-limX, mx+limX);
       j.y=clamp(j.y, my-limY, my+limY);
+    }
+  }
+  /* En ligne, chacun a sa caméra : on garde l'autre visible sur les deux
+     écrans. L'écart permis est d'un demi-écran, celui du plus petit des deux,
+     moins une marge pour que le personnage ne colle pas au bord. */
+  if(NET.actif && G.joueurs.length===2){
+    const L=laisseReseau();
+    const a=G.joueurs[0], b=G.joueurs[1];
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    for(const j of G.joueurs){
+      j.x=clamp(j.x, mx-L.x, mx+L.x);
+      j.y=clamp(j.y, my-L.y, my+L.y);
     }
   }
 
@@ -5370,7 +5421,7 @@ const NET={
   dernierEnvoi:0, dernierInput:0,
   hz:30, tSnap:0, depuis:0,
   moi:0, nid:0, vue:null, dernierVue:0,
-  attente:false,
+  attente:false, choix:null,
   envoyes:0, recus:0, mesure:0, debit:0, ping:0, tPing:0,
 };
 
@@ -5461,7 +5512,8 @@ function instantane(){
   const rx=(v)=>r0(v)-bx, ry=(v)=>r0(v)-by;
   NET.tick=(NET.tick||0)+1;
   const lentes=(NET.tick%3===0);        // gemmes et butins : un envoi sur trois
-  const s={ t:'s', O:[bx,by], Q:lentes?1:0, T:r(G.t*10)/10, L:G.lvl, X:r(G.xp), K:G.tues, E:G.etat,
+  const L=laisseReseau();
+  const s={ t:'s', O:[bx,by], A:[r(L.x),r(L.y)], Q:lentes?1:0, T:r(G.t*10)/10, L:G.lvl, X:r(G.xp), K:G.tues, E:G.etat,
     /* Les drapeaux tiennent dans un seul nombre. Saut et geste en font partie :
        sans eux l'invité ne verrait jamais les poses de saut et d'ultime, et son
        personnage glisserait sans raison pendant une roue. */
@@ -5507,6 +5559,13 @@ function instantane(){
   return s;
 }
 
+/* Demi-écart permis autour du point médian, en unités du monde. */
+function laisseReseau(){
+  let w=W/ZOOM, h=H/ZOOM;
+  if(NET.vue){ w=Math.min(w,NET.vue.w); h=Math.min(h,NET.vue.h); }
+  return { x:Math.max(120,(w/2-40)/2), y:Math.max(90,(h/2-56)/2) };
+}
+
 /* --- l'invité applique l'instantané reçu --- */
 function appliquer(s){
   G.t=s.T; G.lvl=s.L; G.xp=s.X; G.tues=s.K;
@@ -5514,6 +5573,7 @@ function appliquer(s){
   const BX=(s.O&&s.O[0])||0, BY=(s.O&&s.O[1])||0;
   const ax=(v)=>v+BX, ay=(v)=>v+BY;
   NET.attente = (s.E==='levelup');
+  if(s.A) NET.laisse={x:s.A[0], y:s.A[1]};
   /* Vitesse estimée entre deux instantanés : entre deux envois, on prolonge
      le mouvement au lieu de laisser les ennemis rattraper leur cible en
      retard (c'était la sensation de lag). */
@@ -5594,6 +5654,8 @@ function recevoir(brut){
   if(m.t==='v'){ NET.vue={w:Math.min(m.w,3000), h:Math.min(m.h,2000)}; return; }
   if(m.t==='ult'){  const j=G.joueurs[1]; if(j) declencherUltime(j); return; }
   if(m.t==='saut'){ const j=G.joueurs[1]; if(j) sauter(j); return; }
+  if(m.t==='lvl'){ ouvrirChoixReseau(m.c, m.n); return; }
+  if(m.t==='pick'){ if(NET.role==='hote') appliquerChoixReseau(1, m.i|0); return; }
   if(m.t==='triche'){ if(NET.role==='hote') appliquerTriche(m.c, m.cible, m.v); return; }
   if(m.t==='go'){                                   // l'hôte lance la partie
     $('menu').classList.add('cache'); $('reseau').classList.add('cache');
@@ -5652,7 +5714,7 @@ function lisser(dt){
   /* Pendant une roue, l'hôte ne tient plus compte de la commande : prédire
      localement ferait diverger de 400 unités en moins d'une seconde, puis
      recaler d'un coup. On suit donc l'hôte sans rien prédire. */
-  if(moi && !moi.aterre && !moi.emporte && G.etat==='jeu'){
+  if(moi && !moi.aterre && !moi.emporte && !NET.choix && G.etat==='jeu'){
     const d=dirJoueur(0);
     let v=moi.vitesse*moi.mult.vitesse;
     if(moi.saut>0) v*=CFG.saut.elan;
@@ -5661,6 +5723,12 @@ function lisser(dt){
     else { moi.vx=d.x*v; moi.vy=d.y*v; }
     moi.x=clamp(moi.x+moi.vx*dt,BORD_JOUEUR,R.arene-BORD_JOUEUR);
     moi.y=clamp(moi.y+moi.vy*dt,BORD_JOUEUR,R.arene-BORD_JOUEUR);
+    // la laisse, prédite aussi : sinon on file au-delà puis l'hôte nous ramène
+    const autre=G.joueurs[1-NET.moi], L=NET.laisse;
+    if(autre && L && autre.cx!==undefined){
+      moi.x=clamp(moi.x, autre.cx-2*L.x, autre.cx+2*L.x);
+      moi.y=clamp(moi.y, autre.cy-2*L.y, autre.cy+2*L.y);
+    }
     decoincer(moi, moi.r);
     if(d.x||d.y){ moi.marche+=dt*7; if(Math.abs(d.x)>0.15) moi.flip=d.x<0; }
   }
