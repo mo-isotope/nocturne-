@@ -2086,6 +2086,55 @@ if(TACTILE){
 /* Le jeu est dessiné à pleine résolution. ZOOM règle le recul de la caméra :
    1 = échelle d'origine ; en dessous de 1 on voit plus loin autour de soi. */
 let W=0,H=0,DPR=1,ZOOM=1;
+/* RECUL éloigne la caméra quand les deux joueurs s'écartent : 1 = vue normale,
+   RECUL_MIN = le plus loin qu'elle aille. La laisse se règle sur cette vue
+   la plus large, et ZV() donne le zoom réellement appliqué. */
+const RECUL_MIN=0.68;
+let RECUL=1;
+function ZV(){ return ZOOM*RECUL; }
+/* La laisse, en part de la vue la plus large : 1 laisserait aller jusqu'au
+   bord de l'écran le plus reculé. */
+const LAISSE=0.7;
+/* Les fiches de vie cachent une bande de l'écran : en haut à deux sur un
+   écran, en bas en solo et en ligne. HUD_HAUT et HUD_BAS en donnent la
+   hauteur, en pixels d'écran. La caméra se centre sur le reste, et la laisse
+   empêche un joueur de passer derrière. Mesurées quand les fiches changent. */
+let HUD_HAUT=0, HUD_BAS=0;
+function mesurerHud(){
+  HUD_HAUT=0; HUD_BAS=0;
+  const f=$('fiches');
+  if(!f || $('hud').classList.contains('cache')) return;
+  const r=f.getBoundingClientRect();
+  if(!r.height) return;
+  if(r.top < H/2) HUD_HAUT=Math.max(0, r.bottom+6);
+  else HUD_BAS=Math.max(0, H-r.top+6);
+}
+// hauteur d'écran utile, en unités du monde à l'échelle de base
+function hauteurUtile(){ return Math.max(160, H-HUD_HAUT-HUD_BAS)/ZOOM; }
+// décalage vertical de la caméra pour centrer les joueurs dans la zone utile
+function decalageHud(){
+  return G.joueurs.length===2 ? (HUD_HAUT-HUD_BAS)/(2*ZV()) : 0;
+}
+/* Le recul voulu : assez pour garder l'autre joueur dans le cadre, avec une
+   marge, et pas davantage. À deux sur un écran, la caméra est au milieu des
+   deux ; en ligne, elle est sur nous et l'autre doit tenir dans un
+   demi-écran. On recule vite et on revient doucement. */
+function majRecul(dt){
+  // les fiches changent de taille avec la fenêtre : on remesure de temps en temps
+  majRecul.t=(majRecul.t||0)+dt;
+  if(majRecul.t>0.5){ majRecul.t=0; mesurerHud(); }
+  let cible=1;
+  const a=G.joueurs[0], b=G.joueurs[1];
+  if(a && b && a.x!==undefined && b.x!==undefined){
+    const dx=Math.abs(a.x-b.x), dy=Math.abs(a.y-b.y);
+    const vw=W/ZOOM, vh=hauteurUtile();
+    if(NET.actif) cible=Math.min(1, vw/(2*(dx+150)), vh/(2*(dy+130)));
+    else          cible=Math.min(1, vw/(dx+300), vh/(dy+260));
+    cible=Math.max(RECUL_MIN, cible);
+  }
+  const k=cible<RECUL ? Math.min(1,dt*4) : Math.min(1,dt*1.2);
+  RECUL+=(cible-RECUL)*k;
+}
 let lumCv=null, lumCtx=null, glowCv=null, glowCtx=null, halo=null;
 let gradeCv=null, gradeCle='', vigCv=null, vigCle='';
 /* Étalonnage : un dégradé coloré posé en lumière douce sur toute l'image,
@@ -3487,7 +3536,7 @@ function demarrer(){
   G.joueurs=[creerJoueur(0,choixPerso[0],dx0-30,dy0)];
   if(nbJoueurs===2) G.joueurs.push(creerJoueur(1,choixPerso[1],dx0+30,dy0));
   for(const j of G.joueurs) j.ultime.charges=1;   // une charge pour commencer
-  G.cam={x:dx0,y:dy0};
+  G.cam={x:dx0,y:dy0}; RECUL=1;
   faireBrumeBord(L);
   $('menu').classList.add('cache'); $('fin').classList.add('cache'); $('hud').classList.remove('cache');
   $('zone').textContent=L.nom;
@@ -3512,7 +3561,7 @@ function spawnEnnemi(boss){
     if(dejaLa>=2 || Math.random()>0.10) return;
   }
   const ang=Math.random()*Math.PI*2;
-  const d=furtif ? rnd(300,420) : Math.max(W,H)*0.62/ZOOM+80;
+  const d=furtif ? rnd(300,420) : Math.max(W,H)*0.62/ZV()+80;
   const viseur=G.joueurs.find(j=>!j.aterre)||G.joueurs[0];
   const horde=G.niveau.modif==='horde';
   const D=G.diff||{pv:1,degats:1};
@@ -3572,7 +3621,7 @@ function invoquerColosse(cle, seuil){
   // un gardien de Seuil se dresse sur place : il barre la porte, il ne rôde pas
   const ancre=seuil||cible;
   const ang=Math.random()*Math.PI*2;
-  const d=seuil ? SEUIL_R+(cle==='seigneur'?40:120) : Math.max(W,H)*0.55/ZOOM+120;
+  const d=seuil ? SEUIL_R+(cle==='seigneur'?40:120) : Math.max(W,H)*0.55/ZV()+120;
   const pv=def.pv*(1+Math.min(0.6,(G.t/150)*0.2))*D.pv;
   G.colosse={ type:'ennemi', def, cle, colosse:true, boss:true, nom:def.nom,
     x:clamp(ancre.x+Math.cos(ang)*d,60,CFG.regles.arene-60),
@@ -4571,8 +4620,6 @@ function tirerCartes(joueurs){
         }, poids:2});
     }
   }
-  if(!pool.length) pool.push({cat:'SOIN',nom:'Repos bref',desc:'Rend 40 PV à tout le monde.',
-    appliquer:()=>G.joueurs.forEach(p=>p.pv=Math.min(p.pvMax,p.pv+40))});
   const choix=[], copie=[...pool];
   while(choix.length<3 && copie.length){
     let tot=copie.reduce((s,o)=>s+(o.poids||1),0), r=Math.random()*tot, i=0;
@@ -4583,6 +4630,8 @@ function tirerCartes(joueurs){
 }
 function proposer(){
   G.choix=tirerCartes(G.joueurs);
+  // tout est au maximum : plus rien à proposer, le niveau passe sans écran
+  if(!G.choix.length){ G.niveauxDus=0; return; }
   afficherCartes(G.choix, G.niveauxDus);
   G.etat='levelup';
 }
@@ -4612,6 +4661,7 @@ function proposerReseau(idx){
   const j=G.joueurs[idx];
   if(!j || j.choisit || !G.dus[idx] || G.etat==='fin' || G.etat==='menu') return;
   const cartes=tirerCartes([j]);
+  if(!cartes.length){ G.dus[idx]=0; return; }
   j.choisit=true; G.choixNet[idx]=cartes;
   const vue=cartes.map(o=>({cat:o.cat, nom:o.nom, desc:o.desc}));
   if(idx===NET.moi) ouvrirChoixReseau(vue, G.dus[idx]);
@@ -4717,6 +4767,7 @@ function majFiches(){
       <div class="armes" style="color:var(--ambre)">${CFG.ultimes[j.ultime.cle].nom} ${'◈'.repeat(j.ultime.charges)||'—'}</div>`;
     c.appendChild(d);
   }
+  mesurerHud();
 }
 
 /* ==========================================================================
@@ -5022,7 +5073,9 @@ function boucle(now){
       lisser(dt);
       for(const c of G.chutes) c.z=Math.max(0,c.z-c.vz*dt);   // la chute continue entre deux envois
       const m=G.joueurs[NET.moi];
-      if(m){ G.cam.x+=(m.x-G.cam.x)*Math.min(1,dt*7); G.cam.y+=(m.y-G.cam.y)*Math.min(1,dt*7); }
+      if(m){ const my=m.y-decalageHud();
+        G.cam.x+=(m.x-G.cam.x)*Math.min(1,dt*7); G.cam.y+=(my-G.cam.y)*Math.min(1,dt*7); }
+      majRecul(dt);
       G.shake=Math.max(0,G.shake-dt*28);
       if(!NET.choix) rendre(dt);            // l'image se fige pendant notre choix
     }
@@ -5030,6 +5083,7 @@ function boucle(now){
   }
   if(G.gel>0){ G.gel-=dt; if(G.etat!=='menu' && !NET.choix) rendre(0); return; }
   if(G.etat==='jeu') for(let k=0;k<(TRICHE.vitesse||1) && G.etat==='jeu';k++) maj(dt);
+  if(G.etat==='jeu') majRecul(dt);
   if(G.etat!=='menu' && !NET.choix) rendre(dt);
 }
 requestAnimationFrame(boucle);
@@ -5097,10 +5151,13 @@ function maj(dt){
   }
   /* À deux sur un même écran, la caméra se place au milieu : sans garde-fou,
      il suffit de s'éloigner l'un de l'autre pour que les deux sortent du cadre.
-     On borne donc chacun à un demi-écran du point médian. Un compagnon à terre
-     compte aussi, sinon on ne peut plus le retrouver pour le relever. */
+     On borne donc chacun à un demi-écran du point médian — l'écran vu de la
+     caméra la plus reculée, puisqu'elle s'éloigne quand ils s'écartent.
+     Un compagnon à terre compte aussi, sinon on ne peut plus le retrouver
+     pour le relever. */
   if(!NET.actif && G.joueurs.length===2){
-    const limX=(W/ZOOM)/2-36, limY=(H/ZOOM)/2-46;
+    const limX=((W/ZOOM/RECUL_MIN)/2-36)*LAISSE;
+    const limY=Math.min(((H/ZOOM/RECUL_MIN)/2-46)*LAISSE, (hauteurUtile()/RECUL_MIN)/2-46);
     const a=G.joueurs[0], b=G.joueurs[1];
     const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
     for(const j of G.joueurs){
@@ -5109,8 +5166,9 @@ function maj(dt){
     }
   }
   /* En ligne, chacun a sa caméra : on garde l'autre visible sur les deux
-     écrans. L'écart permis est d'un demi-écran, celui du plus petit des deux,
-     moins une marge pour que le personnage ne colle pas au bord. */
+     écrans. L'écart permis est d'un demi-écran, celui du plus petit des deux
+     une fois la caméra reculée au plus loin, moins une marge pour que le
+     personnage ne colle pas au bord. */
   if(NET.actif && G.joueurs.length===2){
     const L=laisseReseau();
     const a=G.joueurs[0], b=G.joueurs[1];
@@ -5130,6 +5188,7 @@ function maj(dt){
     const suivis = G.joueurs.length===2 ? G.joueurs : vivants;
     for(const j of suivis){cx+=j.x;cy+=j.y;} cx/=suivis.length; cy/=suivis.length;
   }
+  cy-=decalageHud();
   G.cam.x+=(cx-G.cam.x)*Math.min(1,dt*7); G.cam.y+=(cy-G.cam.y)*Math.min(1,dt*7);
   G.shake=Math.max(0,G.shake-dt*28);
 
@@ -5509,7 +5568,7 @@ function couleurNet(v){ return typeof v==='number' ? COULEURS[v] : v; }
 /* L'invité ne voit qu'environ 620 unités de large. Tout envoyer au-delà,
    c'est du trafic pur : les gemmes au sol représentaient à elles seules
    les trois quarts du débit. On borne par distance ET par nombre. */
-const PORTEE={ ennemis:760, projs:700, gemmes:520, butins:760 };
+const PORTEE={ ennemis:1050, projs:960, gemmes:720, butins:1050 };
 const PLAFOND={ ennemis:160, projs:70, gemmes:120, butins:40, effets:20 };
 function instantane(){
   const cible=G.joueurs[1]||G.joueurs[0];
@@ -5519,7 +5578,7 @@ function instantane(){
   const vue=NET.vue;
   const dansRayon=(o,r)=>{
     if(vue && r>=PORTEE.projs){
-      return Math.abs(o.x-cible.x)<vue.w/2+120 && Math.abs(o.y-cible.y)<vue.h/2+120;
+      return Math.abs(o.x-cible.x)<vue.w/RECUL_MIN/2+120 && Math.abs(o.y-cible.y)<vue.h/RECUL_MIN/2+120;
     }
     return dist2(o.x,o.y,cible.x,cible.y)<r*r;
   };
@@ -5580,9 +5639,11 @@ function instantane(){
 
 /* Demi-écart permis autour du point médian, en unités du monde. */
 function laisseReseau(){
-  let w=W/ZOOM, h=H/ZOOM;
-  if(NET.vue){ w=Math.min(w,NET.vue.w); h=Math.min(h,NET.vue.h); }
-  return { x:Math.max(120,(w/2-40)/2), y:Math.max(90,(h/2-56)/2) };
+  let w=W/ZOOM, h=H/ZOOM, u=hauteurUtile();
+  if(NET.vue){ w=Math.min(w,NET.vue.w); h=Math.min(h,NET.vue.h); u=Math.min(u,NET.vue.u||NET.vue.h); }
+  w/=RECUL_MIN; h/=RECUL_MIN; u/=RECUL_MIN;
+  return { x:Math.max(120,(w/2-40)/2*LAISSE),
+           y:Math.max(80,Math.min((h/2-56)/2*LAISSE, (u/2-56)/2)) };
 }
 
 /* --- l'invité range les instantanés, puis les rejoue avec un léger retard ---
@@ -5718,7 +5779,7 @@ function recevoir(brut){
   if(m.t==='pong'){ NET.ping=Math.round(performance.now()-m.h); return; }
   if(m.t==='s'){ recuInstantane(m); return; }
   if(m.t==='i'){ NET.entree.x=m.x; NET.entree.y=m.y; return; }
-  if(m.t==='v'){ NET.vue={w:Math.min(m.w,3000), h:Math.min(m.h,2000)}; return; }
+  if(m.t==='v'){ NET.vue={w:Math.min(m.w,3000), h:Math.min(m.h,2000), u:Math.min(m.u||m.h,2000)}; return; }
   if(m.t==='ult'){  const j=G.joueurs[1]; if(j) declencherUltime(j); return; }
   if(m.t==='saut'){ const j=G.joueurs[1]; if(j) sauter(j); return; }
   if(m.t==='lvl'){ ouvrirChoixReseau(m.c, m.n); return; }
@@ -5761,7 +5822,7 @@ function reseauTic(now){
   } else {
     if(now-NET.dernierVue>2000){
       NET.dernierVue=now;
-      envoyer({t:'v', w:Math.round(W/ZOOM), h:Math.round(H/ZOOM)});
+      envoyer({t:'v', w:Math.round(W/ZOOM), h:Math.round(H/ZOOM), u:Math.round(hauteurUtile())});
     }
     if(now-NET.dernierInput > 1000/60){
       NET.dernierInput=now;
@@ -6022,7 +6083,7 @@ function rendre(dt){
   const L=G.niveau; if(!L) return;
   if(G.goreAir) majGore(dt);
   const A=L.ambiance||{obscurite:0.72,nuit:PAL.nuit};
-  const Z=ZOOM, VW=W/Z, VH=H/Z;
+  const Z=ZV(), VW=W/Z, VH=H/Z;
   const sx=G.shake?rnd(-G.shake,G.shake):0, sy=G.shake?rnd(-G.shake,G.shake):0;
   const ox=VW/2-G.cam.x+sx, oy=VH/2-G.cam.y+sy;
   const versEcran=(x,y)=>[(x+ox)*Z,(y+oy)*Z];
