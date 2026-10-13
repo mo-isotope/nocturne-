@@ -129,6 +129,13 @@
   .fiche .pv{height:6px;background:rgba(233,227,210,.14);margin-top:5px}
   .fiche .pv i{display:block;height:100%;background:var(--sang)}
   .fiche .armes{font-family:var(--mono);font-size:10px;color:var(--brume);margin-top:5px;line-height:1.5}
+  /* En ligne, les fiches sont compactes : nom et charges d'ultime sur une
+     ligne, la vie, puis les armes sur une seule ligne qui se coupe. Pleines,
+     elles mangeaient un tiers de l'écran, interdit aux joueurs. */
+  body.enligne .fiche{padding:4px 8px;width:min(300px,calc(100vw - 24px));min-width:0}
+  body.enligne .fiche .pv{margin-top:3px}
+  body.enligne .fiche .armes{margin-top:3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  body.enligne .fiche .ult{color:var(--ambre)}
   .table-scores{max-height:52vh;overflow-y:auto;font-family:var(--mono);font-size:12px;
     border:1px solid rgba(233,227,210,.14);background:rgba(12,10,19,.45)}
   .table-scores .lg{display:grid;grid-template-columns:28px minmax(60px,1fr) 72px 44px 46px 58px;
@@ -4743,6 +4750,8 @@ function finir(victoire){
 function majFiches(){
   const duo=!NET.actif && G.joueurs.length===2;
   document.body.classList.toggle('duo', duo);
+  const compact=NET.actif && G.joueurs.length===2;
+  document.body.classList.toggle('enligne', compact);
   const moi=joueurDroite();
   if(moi&&moi.ultime){
     const b=$('btn-ultime');
@@ -4761,7 +4770,12 @@ function majFiches(){
   for(const j of G.joueurs){
     const d=document.createElement('div'); d.className='fiche'+(j.idx===1?' j2':'');
     d.style.borderLeftColor=j.perso.couleur; d.style.borderRightColor=j.perso.couleur;
-    d.innerHTML=`<div class="nom">J${j.idx+1} · ${j.perso.nom}${j.aterre?' · À TERRE':''}</div>
+    d.innerHTML = compact
+      ? `<div class="nom">J${j.idx+1} · ${j.perso.nom}${j.aterre?' · À TERRE':''}
+           <span class="ult">${'◈'.repeat(j.ultime.charges)}</span></div>
+      <div class="pv"><i style="width:${Math.max(0,j.pv/j.pvMax*100)}%"></i></div>
+      <div class="armes">${j.armes.map(a=>a.def.nom+' '+a.niveau).join(' · ')}</div>`
+      : `<div class="nom">J${j.idx+1} · ${j.perso.nom}${j.aterre?' · À TERRE':''}</div>
       <div class="pv"><i style="width:${Math.max(0,j.pv/j.pvMax*100)}%"></i></div>
       <div class="armes">${j.armes.map(a=>a.def.nom+' '+a.niveau).join(' · ')}</div>
       <div class="armes" style="color:var(--ambre)">${CFG.ultimes[j.ultime.cle].nom} ${'◈'.repeat(j.ultime.charges)||'—'}</div>`;
@@ -5538,6 +5552,7 @@ function pairPresent(present){
 const CLES_ENNEMIS=Object.keys(CFG.ennemis);
 CLES_ENNEMIS.forEach((k,i)=>{ CFG.ennemis[k].__i=i; });
 const CLES_BUTINS=Object.keys(CFG.butins);
+const CLES_ARMES=Object.keys(CFG.armes);
 const CLES_PERSOS=CFG.personnages.map(p=>p.id);
 const CLES_NIVEAUX=CFG.niveaux.map(l=>l.id);
 const CLES_DIFF=CFG.difficultes.map(d=>d.id);
@@ -5569,7 +5584,10 @@ function couleurNet(v){ return typeof v==='number' ? COULEURS[v] : v; }
    c'est du trafic pur : les gemmes au sol représentaient à elles seules
    les trois quarts du débit. On borne par distance ET par nombre. */
 const PORTEE={ ennemis:1050, projs:960, gemmes:720, butins:1050 };
-const PLAFOND={ ennemis:160, projs:70, gemmes:120, butins:40, effets:20 };
+/* Un arsenal complet fait voler plus de cent projectiles : au-dessous, ceux
+   qui dépassaient le plafond n'arrivaient pas, et apparaissaient en plein vol
+   quand un plus ancien s'éteignait. */
+const PLAFOND={ ennemis:160, projs:160, gemmes:120, butins:40, effets:32 };
 function instantane(){
   const cible=G.joueurs[1]||G.joueurs[0];
   /* L'invité annonce la taille de son écran : sur un grand moniteur il voit
@@ -5590,6 +5608,7 @@ function instantane(){
   const rx=(v)=>r0(v)-bx, ry=(v)=>r0(v)-by;
   NET.tick=(NET.tick||0)+1;
   const lentes=(NET.tick%3===0);        // gemmes et butins : un envoi sur trois
+  const arsenal=(NET.tick%15===1);      // armes et ultimes : deux fois par seconde
   const L=laisseReseau();
   const s={ t:'s', H:r(performance.now()), O:[bx,by], A:[r(L.x),r(L.y)], Q:lentes?1:0, T:r(G.t*10)/10, L:G.lvl, X:r(G.xp), K:G.tues, E:G.etat,
     /* Les drapeaux tiennent dans un seul nombre. Saut et geste en font partie :
@@ -5600,6 +5619,12 @@ function instantane(){
         |(j.saut>0?16:0)|(j.geste>0?32:0)|(j.roue?64:0)|(j.phase?256:0)|(j.atterri>0?512:0),
         r(j.revive*10), r(j.z||0)]),
     N:[], G:[], B:[], P:[], F:[], C:[] };
+  /* Sans ça, l'invité ne voyait jamais ses armes changer : ses fiches
+     restaient au niveau 1 avec l'arme de départ. */
+  if(arsenal){
+    s.W=G.joueurs.map(j=>j.armes.map(a=>[CLES_ARMES.indexOf(a.id), a.niveau]));
+    s.U=G.joueurs.map(j=>j.ultime.charges);
+  }
   for(const c of G.chutes){
     if(c.attente>0 || !dansRayon(c,PORTEE.ennemis)) continue;
     s.C.push([rx(c.x),ry(c.y),r(c.z),r(c.vz),(c.flip?1:0)+r(c.ph*10)*2]);
@@ -5683,6 +5708,12 @@ function recuInstantane(s){
     NET.retard=clamp(1000/NET.hz*1.3 + NET.gigue*2 + 8, 45, 260);
   }
   if(s.A) NET.laisse={x:s.A[0], y:s.A[1]};
+  if(s.W) s.W.forEach((liste,i)=>{
+    const j=G.joueurs[i]; if(!j) return;
+    j.armes=liste.filter(([k])=>CLES_ARMES[k]).map(([k,n])=>{
+      const a=nouvelleArme(CLES_ARMES[k]); a.niveau=n; return a; });
+    if(s.U) j.ultime.charges=s.U[i];
+  });
   const moi=G.joueurs[NET.moi], d=s.J[NET.moi];
   if(moi && d){
     const [x,y]=s.mJ[NET.moi];
@@ -5896,6 +5927,10 @@ function lisser(dt){
     if(moi.emporte) moi.marche+=dt*9;
   }
   for(const f of G.effets) f.t+=dt;
+  /* Un effet fini doit disparaître ici aussi : sinon sa transparence devient
+     négative, le navigateur l'ignore, et l'anneau d'une bulle crevée restait
+     peint en plein en grossissant jusqu'à l'instantané suivant. */
+  if(G.effets.some(f=>f.t>=f.duree)) G.effets=G.effets.filter(f=>f.t<f.duree);
   for(let i=G.eclats.length-1;i>=0;i--){
     const c=G.eclats[i]; c.vie-=dt;
     c.x+=c.vx*dt; c.y+=c.vy*dt; c.vy+=210*dt; c.vx*=0.97;
@@ -5906,7 +5941,12 @@ function lisser(dt){
   $('tues').textContent=G.tues;
   $('niv').textContent=G.lvl;
   $('xpb').style.width=Math.min(100,G.xp/CFG.regles.xpNiveau(G.lvl)*100)+'%';
-  majFiches();
+  /* Refaire les fiches à chaque image coûtait cher sur tablette : tout le
+     HUD était reconstruit puis remesuré 60 fois par seconde. On ne le fait
+     plus que lorsque ce qu'elles affichent a changé. */
+  const sig=G.joueurs.map(j=>Math.round(j.pv)+'/'+j.pvMax+(j.aterre?'T':'')+j.ultime.charges
+    +j.armes.map(a=>a.id+a.niveau).join('')).join('|');
+  if(sig!==NET.sigFiches){ NET.sigFiches=sig; majFiches(); }
 }
 
 /* ==========================================================================
