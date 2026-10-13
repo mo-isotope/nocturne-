@@ -5422,6 +5422,7 @@ const NET={
   hz:30, tSnap:0, depuis:0,
   moi:0, nid:0, vue:null, dernierVue:0,
   attente:false, choix:null,
+  file:[], courant:null, decal:null, gigue:0, retard:80,
   envoyes:0, recus:0, mesure:0, debit:0, ping:0, tPing:0,
 };
 
@@ -5432,6 +5433,7 @@ function codeSalon(){
 }
 
 function connecter(url, salon, role){
+  NET.file=[]; NET.courant=null; NET.decal=null; NET.gigue=0;
   NET.role=role; NET.moi = role==='hote' ? 0 : 1; NET.salon=salon;
   majReseauUI('Connexion au relais…');
   try{ NET.ws=new WebSocket(url); }
@@ -5486,6 +5488,23 @@ const TYPES_EFFET=['foudre','boom','mort','cendre','fil','feucirc','spray','chal
    Un rang dans cette liste coûte un caractère, bien moins que son nom. */
 const STYLES_JET=['fromage','bouteille','billet','tetine','bulle','mure','balle','tomate','nain','pingpong','haltere','claude','cle'];
 
+/* Les couleurs voyagent par leur rang dans une table commune aux deux
+   joueurs (toutes celles de la palette et de la configuration) : « 12 »
+   au lieu de « "#e8b04a" ». Une couleur absente de la table part en clair. */
+const COULEURS=(()=>{
+  const vues=new Set(), liste=[];
+  const fouiller=(o,prof)=>{
+    if(prof>6 || !o) return;
+    if(typeof o==='string'){ if(/^(#|rgb|hsl)/.test(o) && !vues.has(o)){ vues.add(o); liste.push(o); } return; }
+    if(typeof o==='object') for(const k in o) fouiller(o[k],prof+1);
+  };
+  fouiller(PAL,0); fouiller(CFG,0);
+  return liste;
+})();
+const RANG_COULEUR=new Map(COULEURS.map((c,i)=>[c,i]));
+function couleurCodee(c){ const i=RANG_COULEUR.get(c); return i===undefined ? c : i; }
+function couleurNet(v){ return typeof v==='number' ? COULEURS[v] : v; }
+
 /* --- l'hôte compose un instantané de ce qui entoure l'invité --- */
 /* L'invité ne voit qu'environ 620 unités de large. Tout envoyer au-delà,
    c'est du trafic pur : les gemmes au sol représentaient à elles seules
@@ -5513,7 +5532,7 @@ function instantane(){
   NET.tick=(NET.tick||0)+1;
   const lentes=(NET.tick%3===0);        // gemmes et butins : un envoi sur trois
   const L=laisseReseau();
-  const s={ t:'s', O:[bx,by], A:[r(L.x),r(L.y)], Q:lentes?1:0, T:r(G.t*10)/10, L:G.lvl, X:r(G.xp), K:G.tues, E:G.etat,
+  const s={ t:'s', H:r(performance.now()), O:[bx,by], A:[r(L.x),r(L.y)], Q:lentes?1:0, T:r(G.t*10)/10, L:G.lvl, X:r(G.xp), K:G.tues, E:G.etat,
     /* Les drapeaux tiennent dans un seul nombre. Saut et geste en font partie :
        sans eux l'invité ne verrait jamais les poses de saut et d'ultime, et son
        personnage glisserait sans raison pendant une roue. */
@@ -5547,13 +5566,13 @@ function instantane(){
   for(const p of G.projs){
     if(s.P.length>=PLAFOND.projs) break;
     if(!dansRayon(p,PORTEE.projs)) continue;
-    s.P.push([p.type,rx(p.x),ry(p.y),r(p.r),p.couleur,r(Math.atan2(p.vy||0,p.vx||1)*100),
-              p.style?Math.max(0,STYLES_JET.indexOf(p.style)):0]); }
+    s.P.push([p.type,rx(p.x),ry(p.y),r(p.r),couleurCodee(p.couleur),r(Math.atan2(p.vy||0,p.vx||1)*100),
+              p.style?Math.max(0,STYLES_JET.indexOf(p.style)):0, p.nid||(p.nid=++NET.nid)]); }
   for(const f of G.effets){
     if(s.F.length>=PLAFOND.effets) break;
     const i=TYPES_EFFET.indexOf(f.type); if(i<0) continue;
     s.F.push([i,rx(f.x),ry(f.y),r(f.r||f.w||0),r(f.t*100),r(f.duree*100),
-      f.suit?G.joueurs.indexOf(f.suit):-1, f.couleur, r(f.h||0), f.sens||0,
+      f.suit?G.joueurs.indexOf(f.suit):-1, couleurCodee(f.couleur), r(f.h||0), f.sens||0,
       f.sprite||'', f.img||0, f.flip?1:0, r(f.haut||0)]);
   }
   return s;
@@ -5566,53 +5585,89 @@ function laisseReseau(){
   return { x:Math.max(120,(w/2-40)/2), y:Math.max(90,(h/2-56)/2) };
 }
 
-/* --- l'invité applique l'instantané reçu --- */
+/* --- l'invité range les instantanés, puis les rejoue avec un léger retard ---
+   Appliquer chaque instantané dès son arrivée faisait tout saccader : les
+   paquets arrivent par grappes irrégulières (deux d'un coup, puis rien
+   pendant 80 ms), et l'écran suivait ces hoquets. On les met donc en file,
+   et on montre le monde tel qu'il était un court instant plus tôt, en
+   glissant régulièrement d'un instantané au suivant. Le retard s'ajuste à
+   l'irrégularité mesurée du réseau.
+   Notre propre personnage échappe à ce retard : sa position arrive tout de
+   suite, pour corriger la prédiction locale au plus frais. */
+function absolus(s){
+  const BX=(s.O&&s.O[0])||0, BY=(s.O&&s.O[1])||0;
+  s.mJ=s.J.map(d=>[d[0]+BX, d[1]+BY]);
+  s.mN=new Map(); for(const d of s.N) s.mN.set(d[8], [d[1]+BX, d[2]+BY]);
+  s.mP=new Map(); for(const d of s.P) s.mP.set(d[7], [d[1]+BX, d[2]+BY]);
+}
+function majJoueurNet(j,d){
+  j.pv=d[2]; j.pvMax=d[3];
+  j.aterre=!!(d[4]&1); j.flip=!!(d[4]&2);
+  j.invul=(d[4]&4)?0.3:0; j.bouge=!!(d[4]&8);
+  j.saut=(d[4]&16)?0.1:0; j.geste=(d[4]&32)?0.1:0; j.emporte=!!(d[4]&64);
+  j.phase=(d[4]&256)?1:0; j.atterri=(d[4]&512)?0.1:0;
+  j.revive=d[5]/10; j.z=d[6]||0;
+}
+function recuInstantane(s){
+  absolus(s);
+  const t=performance.now();
+  if(s.H!==undefined){
+    /* Écart entre l'horloge de l'hôte et la nôtre, retard du trajet compris.
+       Le paquet le plus rapide fait foi ; on redescend doucement pour suivre
+       un changement de route. La gigue est l'écart moyen des autres. */
+    const ecart=s.H-t;
+    if(NET.decal===null || ecart>NET.decal) NET.decal=ecart;
+    else NET.decal+=(ecart-NET.decal)*0.004;
+    NET.gigue+=((NET.decal-ecart)-NET.gigue)*0.05;
+    NET.retard=clamp(1000/NET.hz*1.3 + NET.gigue*2 + 8, 45, 260);
+  }
+  if(s.A) NET.laisse={x:s.A[0], y:s.A[1]};
+  const moi=G.joueurs[NET.moi], d=s.J[NET.moi];
+  if(moi && d){
+    const [x,y]=s.mJ[NET.moi];
+    moi.cx=x; moi.cy=y;
+    if(moi.x===undefined || Math.hypot(x-moi.x, y-moi.y)>150){ moi.x=x; moi.y=y; }
+    majJoueurNet(moi,d);
+  }
+  // un hôte sans horloge (ancienne version) : on applique sur-le-champ
+  if(s.H===undefined){ appliquer(s); return; }
+  NET.file.push(s);
+  if(NET.file.length>30) appliquer(NET.file.shift());
+}
 function appliquer(s){
+  const prec=NET.courant; NET.courant=s;
+  const dtS=prec&&s.H!==undefined&&prec.H!==undefined ? Math.max(0.01,(s.H-prec.H)/1000) : 1/NET.hz;
   G.t=s.T; G.lvl=s.L; G.xp=s.X; G.tues=s.K;
   // les positions arrivent relatives au joueur : on les remet en absolu
   const BX=(s.O&&s.O[0])||0, BY=(s.O&&s.O[1])||0;
   const ax=(v)=>v+BX, ay=(v)=>v+BY;
   NET.attente = (s.E==='levelup');
-  if(s.A) NET.laisse={x:s.A[0], y:s.A[1]};
-  /* Vitesse estimée entre deux instantanés : entre deux envois, on prolonge
-     le mouvement au lieu de laisser les ennemis rattraper leur cible en
-     retard (c'était la sensation de lag). */
-  const tNow=performance.now();
-  const dtS=Math.max(0.02,Math.min(0.25,(tNow-NET.tSnap)/1000)); NET.tSnap=tNow; NET.depuis=0;
-  const vit=(o,nx,ny)=>{
-    if(o.cx===undefined){ o.ux=0; o.uy=0; return; }
-    const dx=nx-o.cx, dy=ny-o.cy;
-    if(dx*dx+dy*dy>80*80){ o.ux=0; o.uy=0; return; }   // téléportation : pas d'élan
-    o.ux=o.ux*0.3+dx/dtS*0.7; o.uy=o.uy*0.3+dy/dtS*0.7;
+  /* x0,y0 : la position à l'instant de cet instantané ; ux,uy : la vitesse
+     depuis le précédent, qui ne sert que si le suivant tarde. */
+  const poser=(o,x,y)=>{
+    if(o.x0===undefined || (x-o.x0)**2+(y-o.y0)**2>120*120){ o.ux=0; o.uy=0; o.x=x; o.y=y; }
+    else { o.ux=(x-o.x0)/dtS; o.uy=(y-o.y0)/dtS; }
+    o.x0=x; o.y0=y;
   };
 
   s.J.forEach((d,i)=>{
-    const j=G.joueurs[i]; if(!j) return;
-    vit(j,ax(d[0]),ay(d[1]));
-    j.cx=ax(d[0]); j.cy=ay(d[1]);               // cible, on y glisse au rendu
-    if(j.x===undefined){ j.x=j.cx; j.y=j.cy; }
-    // notre personnage : si la prédiction a trop dérivé, on recale d'un coup
-    if(i===NET.moi && Math.hypot(j.cx-j.x, j.cy-j.y)>150){ j.x=j.cx; j.y=j.cy; }
-    j.pv=d[2]; j.pvMax=d[3];
-    j.aterre=!!(d[4]&1); j.flip=!!(d[4]&2);
-    j.invul=(d[4]&4)?0.3:0; j.bouge=!!(d[4]&8);
-    j.saut=(d[4]&16)?0.1:0; j.geste=(d[4]&32)?0.1:0; j.emporte=!!(d[4]&64);
-    j.phase=(d[4]&256)?1:0; j.atterri=(d[4]&512)?0.1:0;
-    j.revive=d[5]/10; j.z=d[6]||0;
+    const j=G.joueurs[i]; if(!j || i===NET.moi) return;
+    poser(j, s.mJ[i][0], s.mJ[i][1]);
+    majJoueurNet(j,d);
   });
 
   const anciens=new Map(G.ennemis.map(e=>[e.k,e]));
   G.ennemis.length=0;
-  s.N.forEach((d,i)=>{
+  s.N.forEach(d=>{
     const def=CFG.ennemis[CLES_ENNEMIS[d[0]]]; if(!def) return;
     /* Identité stable envoyée par l'hôte. L'ancien rang dans la liste changeait
        dès qu'un ennemi entrait ou sortait du cadre : tous les suivants
        prenaient la place d'un autre et glissaient à travers l'écran. */
     const cle=d[8];
     let e=anciens.get(cle);
-    if(!e){ e={type:'ennemi',def,k:cle,x:ax(d[1]),y:ay(d[2])}; }
-    vit(e,ax(d[1]),ay(d[2]));
-    e.def=def; e.cx=ax(d[1]); e.cy=ay(d[2]); e.r=d[3];
+    if(!e) e={type:'ennemi',def,k:cle};
+    poser(e, ax(d[1]), ay(d[2]));
+    e.def=def; e.r=d[3];
     e.flip=!!(d[4]&1); e.boss=!!(d[4]&2); e.flash=(d[4]&4)?0.1:0; e.charge=(d[4]&8)?1:0;
     e.anim=d[5]; e.pv=d[6]; e.pvMax=100; e.squash=d[7]/100;
     G.ennemis.push(e);
@@ -5625,13 +5680,25 @@ function appliquer(s){
   }
   G.chutes=(s.C||[]).map(d=>({x:ax(d[0]),y:ay(d[1]),z:d[2],vz:d[3],
     flip:!!(d[4]&1), ph:(d[4]>>1)/10, attente:0}));
-  G.projs=s.P.map(d=>({type:d[0],x:ax(d[1]),y:ay(d[2]),r:d[3],couleur:d[4],
-    vx:Math.cos(d[5]/100),vy:Math.sin(d[5]/100),vie:1,
-    style:STYLES_JET[d[6]||0], rot:d[5]/100}));
+  /* Les projectiles gardent leur identité, comme les ennemis : recréés à
+     chaque envoi, ils avançaient par bonds, 30 fois par seconde. */
+  const vieux=new Map(G.projs.map(p=>[p.k,p]));
+  G.projs=s.P.map(d=>{
+    let p=vieux.get(d[7]);
+    if(!p) p={k:d[7], vie:1};
+    poser(p, ax(d[1]), ay(d[2]));
+    p.type=d[0]; p.r=d[3]; p.couleur=couleurNet(d[4]);
+    p.vx=Math.cos(d[5]/100); p.vy=Math.sin(d[5]/100); p.rot=d[5]/100;
+    p.style=STYLES_JET[d[6]||0];
+    return p;
+  });
+  // un éclair garde sa forme d'un envoi à l'autre, au lieu de trembler
+  const eclairs=new Map(G.effets.filter(f=>f.pts).map(f=>[f.x+'|'+f.y,f.pts]));
   G.effets=s.F.map(d=>({type:TYPES_EFFET[d[0]],x:ax(d[1]),y:ay(d[2]),r:d[3],
-    t:d[4]/100,duree:d[5]/100,suit:d[6]>=0?G.joueurs[d[6]]:null,couleur:d[7],
+    t:d[4]/100,duree:d[5]/100,suit:d[6]>=0?G.joueurs[d[6]]:null,couleur:couleurNet(d[7]),
     h:d[8],w:d[3],sens:d[9],sprite:d[10],img:d[11],flip:!!d[12],haut:d[13],
-    pts:TYPES_EFFET[d[0]]==='foudre'?eclair(ax(d[1]),ay(d[2])):null}));
+    pts:TYPES_EFFET[d[0]]==='foudre'
+      ? (eclairs.get(ax(d[1])+'|'+ay(d[2])) || eclair(ax(d[1]),ay(d[2]))) : null}));
   if(GORE.actif) for(const f of G.effets) if(f.type==='cendre'){
     const k=Math.round(f.x/6)+'|'+Math.round(f.y/6);
     if(GORE.vus.has(k)) continue;
@@ -5649,7 +5716,7 @@ function recevoir(brut){
   if(m.t==='refus'){ majReseauUI('Refusé : '+m.raison); return; }
   if(m.t==='ping'){ envoyer({t:'pong', h:m.h}); return; }
   if(m.t==='pong'){ NET.ping=Math.round(performance.now()-m.h); return; }
-  if(m.t==='s'){ appliquer(m); return; }
+  if(m.t==='s'){ recuInstantane(m); return; }
   if(m.t==='i'){ NET.entree.x=m.x; NET.entree.y=m.y; return; }
   if(m.t==='v'){ NET.vue={w:Math.min(m.w,3000), h:Math.min(m.h,2000)}; return; }
   if(m.t==='ult'){  const j=G.joueurs[1]; if(j) declencherUltime(j); return; }
@@ -5684,8 +5751,12 @@ function reseauTic(now){
   }
   if(NET.role==='hote'){
     if(now-NET.tPing>2000){ NET.tPing=now; envoyer({t:'ping', h:performance.now()}); }
-    if(now-NET.dernierEnvoi > 1000/NET.hz && G.etat!=='menu'){
-      NET.dernierEnvoi=now; envoyer(instantane());
+    // marge de 4 ms : à 60 images/s, « > 33,3 ms » ratait souvent la bonne
+    // image, et l'envoi tombait à 20 par seconde au lieu de 30
+    if(now-NET.dernierEnvoi >= 1000/NET.hz-4 && G.etat!=='menu'){
+      NET.dernierEnvoi=now;
+      // connexion engorgée : sauter un envoi vaut mieux que l'empiler
+      if(!NET.ws || NET.ws.bufferedAmount<64*1024) envoyer(instantane());
     }
   } else {
     if(now-NET.dernierVue>2000){
@@ -5725,32 +5796,43 @@ function lisser(dt){
     moi.y=clamp(moi.y+moi.vy*dt,BORD_JOUEUR,R.arene-BORD_JOUEUR);
     // la laisse, prédite aussi : sinon on file au-delà puis l'hôte nous ramène
     const autre=G.joueurs[1-NET.moi], L=NET.laisse;
-    if(autre && L && autre.cx!==undefined){
-      moi.x=clamp(moi.x, autre.cx-2*L.x, autre.cx+2*L.x);
-      moi.y=clamp(moi.y, autre.cy-2*L.y, autre.cy+2*L.y);
+    if(autre && L && autre.x0!==undefined){
+      moi.x=clamp(moi.x, autre.x-2*L.x, autre.x+2*L.x);
+      moi.y=clamp(moi.y, autre.y-2*L.y, autre.y+2*L.y);
     }
     decoincer(moi, moi.r);
     if(d.x||d.y){ moi.marche+=dt*7; if(Math.abs(d.x)>0.15) moi.flip=d.x<0; }
   }
 
-  for(const j of G.joueurs){
-    if(j.cx===undefined) continue;
-    if(j===moi){
-      // notre propre personnage : on rattrape l'écart en douceur, sauf emporté
-      // par une roue — là c'est l'hôte qui décide, et vite.
-      const p=j.emporte ? k : Math.min(1,dt*3);
-      j.x+=(j.cx-j.x)*p; j.y+=(j.cy-j.y)*p;
-      if(j.emporte) j.marche+=dt*9;
-      continue;
-    }
-    if(NET.depuis<0.12){ j.cx+=(j.ux||0)*dt; j.cy+=(j.uy||0)*dt; }
-    j.x+=(j.cx-j.x)*k; j.y+=(j.cy-j.y)*k;
-    if(j.bouge||j.emporte) j.marche+=dt*(j.emporte?9:7);
+  /* On rejoue la file : tout instantané dont l'heure est passée s'applique,
+     puis chaque objet glisse vers sa place dans le suivant. */
+  const tr=performance.now()+(NET.decal||0)-NET.retard;
+  while(NET.file.length && NET.file[0].H<=tr) appliquer(NET.file.shift());
+  const cur=NET.courant, nxt=NET.file[0];
+  if(cur && cur.H!==undefined){
+    const a=nxt ? clamp((tr-cur.H)/Math.max(1,nxt.H-cur.H),0,1) : 0;
+    // file vide : on prolonge le dernier mouvement, sans dépasser 100 ms
+    const ex=nxt ? 0 : clamp((tr-cur.H)/1000,0,0.1);
+    const glisser=(o,cible)=>{
+      if(o.x0===undefined) return;
+      if(cible && (cible[0]-o.x0)**2+(cible[1]-o.y0)**2<120*120){
+        o.x=o.x0+(cible[0]-o.x0)*a; o.y=o.y0+(cible[1]-o.y0)*a;
+      } else { o.x=o.x0+(o.ux||0)*ex; o.y=o.y0+(o.uy||0)*ex; }
+    };
+    G.joueurs.forEach((j,i)=>{
+      if(j===moi) return;
+      glisser(j, nxt&&nxt.mJ[i]);
+      if(j.bouge||j.emporte) j.marche+=dt*(j.emporte?9:7);
+    });
+    for(const e of G.ennemis) glisser(e, nxt&&nxt.mN.get(e.k));
+    for(const p of G.projs)   glisser(p, nxt&&nxt.mP.get(p.k));
   }
-  for(const e of G.ennemis){
-    if(e.cx===undefined) continue;
-    if(NET.depuis<0.12){ e.cx+=(e.ux||0)*dt; e.cy+=(e.uy||0)*dt; }
-    e.x+=(e.cx-e.x)*k; e.y+=(e.cy-e.y)*k;
+  if(moi && moi.cx!==undefined){
+    // notre propre personnage : on rattrape l'écart en douceur, sauf emporté
+    // par une roue — là c'est l'hôte qui décide, et vite.
+    const p=moi.emporte ? Math.min(1,dt*18) : Math.min(1,dt*3);
+    moi.x+=(moi.cx-moi.x)*p; moi.y+=(moi.cy-moi.y)*p;
+    if(moi.emporte) moi.marche+=dt*9;
   }
   for(const f of G.effets) f.t+=dt;
   for(let i=G.eclats.length-1;i>=0;i--){

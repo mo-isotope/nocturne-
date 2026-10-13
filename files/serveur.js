@@ -189,7 +189,15 @@ function lireCorps(req) {
   });
 }
 
-const wss = new WebSocketServer({ server: serveur });
+// Les instantanés sont du JSON très répétitif : compressés, ils pèsent
+// plusieurs fois moins lourd. Niveau 1 : le plus rapide, l'essentiel du gain.
+const wss = new WebSocketServer({
+  server: serveur,
+  perMessageDeflate: { threshold: 256, zlibDeflateOptions: { level: 1 } },
+});
+// Au-delà, l'invité ne suit plus : on jette les instantanés au lieu de les
+// empiler, sinon le retard grandit sans fin. Le suivant les remplace.
+const TROP_PLEIN = 96 * 1024;
 
 function partenaire(salle, role) {
   return role === 'hote' ? salle.invite : salle.hote;
@@ -237,6 +245,8 @@ wss.on('connection', (sock) => {
     if (!salle) return;
     const autre = partenaire(salle, sock.role);
     if (autre && autre.readyState === 1) {
+      if (autre.bufferedAmount > TROP_PLEIN && donnees.length > 8
+          && donnees.toString('utf8', 0, 8) === '{"t":"s"') return;
       try { autre.send(donnees, { binary: binaire }); } catch (e) {}
     }
   });
