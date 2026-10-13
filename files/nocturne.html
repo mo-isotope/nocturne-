@@ -212,7 +212,7 @@
     <h1>NOCTURNE</h1>
     <div class="ch-sous">la nuit se prépare</div>
     <div class="ch-barre attente" id="ch-barre"><i></i></div>
-    <div class="ch-phrase" id="ch-phrase">Les ombres se rassemblent…</div>
+    <div class="ch-phrase" id="ch-phrase">La nuit tombe…</div>
     <ul>
       <li id="ch-sprites"><b>…</b>Invocation des créatures</li>
       <li id="ch-relais"><b>…</b>Réveil du relais <span id="ch-temps"></span></li>
@@ -238,11 +238,51 @@ window.CHARGEMENT = (function(){
   const $c = (id) => document.getElementById(id);
   const etat = { sprites:false, relais:null, fini:false, debut:Date.now() };
   const PHRASES = [
-    'Les ombres se rassemblent…', 'On aiguise les crocs…', 'La lune se lève sur la lande…',
-    'Les morts se réveillent…', 'Le relais sort de son cercueil…', 'On compte les chauves-souris…',
-    'Le Rôdeur flaire votre piste…', 'On allume les braseros…',
+    'Mymassa sort son portefeuille…',
+    'Mymassa recompte ses billets…',
+    'Guiguibat planque les bonnes meules…',
+    'Guiguibat fait le plein de la Porsche…',
+    'Titi s’épile les tétons…',
+    'Titi gonfle les pectoraux devant la glace…',
+    'Brice de Merris rassemble ses nains de jardin…',
+    'Brice de Merris termine de casser un mur…',
+    'Lafel nettoie son calibre…',
+    'Lafel fait ses cinquante pompes du matin…',
+    'Marlexlu finissent de changer une couche…',
+    'Marlexlu reviennent de la ville…',
+    'Le Galérien sort du lit…',
+    'Le Galérien rapporte ses bouteilles consignées…',
+    'Ludouille enfile son maillot de Lens…',
+    'Ludouille affûte ses fléchettes…',
+    'Gagou sort promener Jaja…',
+    'Gagou remplit son flacon de bulles…',
+    'Arthur cueille des mûres pour sa fronde…',
+    'Arthur resserre les roues de son skate…',
+    'Léonie récolte ses balles…',
+    'Léonie s’échauffe en faisant la roue…',
+    'Marie récupère ses petites tomates…',
+    'Marie termine son avocado toast…',
+    'Marie met ses baskets…',
+    'Sebou sort de son club de ping…',
+    'Sebou enlève son casque de VR…',
+    'Sebou récupère son permis bus…',
+    'Renaud revient d’une manif…',
+    'Renaud met ses belles Ray-Ban…',
+    'Renaud prend ses haltères…',
+    'Swann achève un gros chantier…',
+    'Swann fait son PT test…',
+    'Gregou termine sa GROSSE journée…',
+    'Gregou cherche sa clé de 12…',
+    'Gregou rallume son chalumeau…',
+    'Camille enfile son pyjama…',
+    'Camille fait claquer son fouet…',
+    'Camille se prépare à cracher son feu…',
   ];
+  for (let i = PHRASES.length - 1; i > 0; i--) {          // ordre différent à chaque chargement
+    const j = Math.floor(Math.random() * (i + 1)); [PHRASES[i], PHRASES[j]] = [PHRASES[j], PHRASES[i]];
+  }
   let iPhrase = 0;
+  document.addEventListener('DOMContentLoaded', () => { const p = $c('ch-phrase'); if (p) p.textContent = PHRASES[0]; });
   const minuterie = setInterval(() => {
     const p = $c('ch-phrase'); if (!p) return;
     iPhrase = (iPhrase + 1) % PHRASES.length;
@@ -696,7 +736,7 @@ const CFG = {
          repos   : cycles par seconde à l'arrêt — il piétine, il ne se fige pas,
          vMarche : vitesse à partir de laquelle le corps rebondit à plein,
          rebond  : hauteur du rebond à chaque pas, tangue : roulis, en radians. */
-    cloporte:  { nom:'Cloporte',      sprite:'s_cloporte',   pv:100, vitesse:50,  degats:9,  taille:22, xp:2,
+    cloporte:  { nom:'Cloporte',      sprite:'s_cloporte',   pv:100, vitesse:50,  degats:9,  taille:22, xp:5,
                  trot:{ foulee:84, repos:0.35, vMarche:30, rebond:2.2, tangue:0.06 } },
   },
 
