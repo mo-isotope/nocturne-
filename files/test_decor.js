@@ -7,6 +7,7 @@ const dir=__dirname;
 const html=fs.readFileSync(path.join(dir,'nocturne.html'),'utf8');
 const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
 const sprites=fs.readFileSync(path.join(dir,'sprites.js'),'utf8');
+const spritesSS=fs.readFileSync(path.join(dir,'sprites_sous_sol.js'),'utf8');
 
 /* un objet qui accepte tout : appels, propriétés, constructeurs */
 function fantome(){
@@ -31,19 +32,20 @@ const ctx=vm.createContext(sandbox);
 const principal=scripts[scripts.length-1].replace(/\n\s*(boucle|requestAnimationFrame)\([^)]*\);?\s*$/m,'');
 try{
   vm.runInContext(sprites+'\n;globalThis.__SPR=SPRITES;',ctx,{filename:'sprites.js'});
-  vm.runInContext(principal+'\n;globalThis.__T={CFG,G,genererDecor,grainNiveau,SPR,distChemin,LUMIERES:typeof LUMIERES!=="undefined"?LUMIERES:null};',ctx,{filename:'nocturne.html'});
+  vm.runInContext(spritesSS+';globalThis.__SS=SPRITES_SOUS_SOL;',ctx,{filename:'sprites_sous_sol.js'});
+  vm.runInContext(principal+'\n;globalThis.__T={CFG,G,genererDecor,genererSousSol,grainNiveau,SPR,distChemin,LUMIERES:typeof LUMIERES!=="undefined"?LUMIERES:null};',ctx,{filename:'nocturne.html'});
 }catch(e){ console.error('chargement impossible :',e.message); process.exit(2); }
 const T=sandbox.__T;
 /* SPR n'est pas compilé dans le bac à sable (images factices) : on déclare
    seulement les tailles que le générateur lit. */
-for(const k in sandbox.__SPR){ const s=sandbox.__SPR[k]; if(s.img64) T.SPR[k]={w:s.img64.w,h:s.img64.h,taille:s.img64.taille}; }
+for(const src of [sandbox.__SPR,sandbox.__SS]) for(const k in src){ const s=src[k]; if(s.img64) T.SPR[k]={w:s.img64.w,h:s.img64.h,taille:s.img64.taille}; }
 module.exports=T;
 
 const ROUTE_MIN=88+40, BORD=460;
 const empreinte=(d,G)=>JSON.stringify(d.map(o=>[o.id,o.nom,Math.round(o.x*10),Math.round(o.y*10),Math.round(o.h*10),o.flip?1:0,Math.round(o.ph*1000),o.mur?1:0]))+JSON.stringify([G.murs,G.salles,G.seuils,G.trace]);
 
 if(require.main===module){
-  const {CFG,G,genererDecor,distChemin}=T;
+  const {CFG,G,genererDecor,genererSousSol,distChemin}=T;
   const REG=CFG.decors.regles, A=CFG.regles.arene, S4=(A/4200)**2/4;
   const rapport=process.argv.includes('--rapport');
   let ok=true;
@@ -121,6 +123,24 @@ if(require.main===module){
     const dehors=G.trace.filter(p=>Math.abs(p.x-C)>1100||Math.abs(p.y-C)>1100).pop();
     cibles.push(['porte du labyrinthe',dehors]);
     for(const [nomC,p] of cibles) verdict(atteint(p), L.id+' : '+nomC+' inatteignable à pied');
+    /* la chapelle lumineuse du passage secret : une, loin du départ et des Seuils, sa porte atteignable à pied */
+    verdict(!!G.secret, L.id+' : pas de chapelle lumineuse');
+    if(G.secret){
+      verdict(Math.hypot(G.secret.x-dep.x,G.secret.y-dep.y)>=1500, L.id+' : la chapelle est trop près du départ');
+      verdict(G.seuils.every(q=>Math.hypot(G.secret.x-q.x,G.secret.y-q.y)>=800), L.id+' : la chapelle est trop près d\'un Seuil');
+      // le déclencheur : un joueur dont le centre passe à moins de 'rayon' px de la zone. On cherche un point
+      // libre (hors des pieds, élargis du rayon du joueur) dans la zone, voisin d'une case atteinte.
+      const zr=CFG.sousSol.chapelle.rayon;
+      const libre=(x,y)=>!G.murs.some(m=>x>m.x-R && x<m.x+m.w+R && y>m.y-R && y<m.y+m.h+R);
+      let prochable=false;
+      for(let k=0;k<=16 && !prochable;k++){
+        const a=k*Math.PI/8, rr=k===16?0:zr*0.8, px=G.secret.x+Math.cos(a)*rr, py=G.secret.y+Math.sin(a)*rr;
+        if(!libre(px,py)) continue;
+        const ci=Math.floor(px/CEL), cj=Math.floor(py/CEL);
+        for(let dj=-1;dj<=1&&!prochable;dj++) for(let di=-1;di<=1;di++) if(vu[(cj+dj)*N+ci+di]===1){ prochable=true; break; }
+      }
+      verdict(prochable, L.id+' : on ne peut pas se tenir dans la zone de la porte de la chapelle');
+    }
     const nSolides=d.filter(o=>o.solides).length;
     const libresN=bloque.reduce((a,b)=>a+(b?0:1),0);
     if(rapport) console.log('       carte accessible depuis le départ : '+Math.round(100*file.length/libresN)+' % des cases libres');
@@ -131,6 +151,36 @@ if(require.main===module){
     verdict(nbPf===0 || blocs.length>0, L.id+' : aucun bloc préfabriqué posé');
     console.log((bon?'OK    ':'ÉCHEC ')+L.id.padEnd(8)+' '+String(d.length).padStart(4)+' décors  identiques trop proches: '+nEsp+'  monuments non isolés: '+nIso+'  objets de blocs: '+blocs.length+'  pleins: '+nSolides+' ('+G.murs.length+' pieds)');
     if(rapport) console.log('       '+Object.entries(par).map(([n,a])=>n.slice(2)+':'+a.length).join(' '));
+  }
+  /* --- la caverne du sous-sol : déterministe, et tout ce qui compte s'atteint à pied --- */
+  for(const L of CFG.niveaux){
+    G.niveauSurface=L;
+    const a=genererSousSol(), b=genererSousSol();
+    const sig=(g)=>JSON.stringify([g.decor.map(o=>[o.id,o.nom,Math.round(o.x),Math.round(o.y)]),g.murs.length,g.depart,g.sortie,g.antre,g.coffres]);
+    verdict(sig(a)===sig(b), L.id+' : la caverne diffère d\'un tirage à l\'autre');
+    // un joueur de 18 px de rayon, les murs de roche et les pieds du décor comme obstacles
+    const CEL=23, N=Math.ceil(a.A/CEL), bloque=new Uint8Array(N*N), R=18, BJ=CFG.sousSol.bord;
+    const rect=(x1,y1,x2,y2)=>{ for(let j=Math.max(0,Math.floor(y1/CEL));j<=Math.min(N-1,Math.floor(y2/CEL));j++)
+      for(let i=Math.max(0,Math.floor(x1/CEL));i<=Math.min(N-1,Math.floor(x2/CEL));i++) bloque[j*N+i]=1; };
+    for(const m of a.murs) rect(m.x-R,m.y-R,m.x+m.w+R,m.y+m.h+R);
+    rect(0,0,BJ,a.A); rect(a.A-BJ,0,a.A,a.A); rect(0,0,a.A,BJ); rect(0,a.A-BJ,a.A,a.A);
+    const vu=new Uint8Array(N*N), file=[], i0=Math.floor(a.depart.x/CEL)+Math.floor(a.depart.y/CEL)*N;
+    vu[i0]=1; file.push(i0);
+    for(let q=0;q<file.length;q++){ const c=file[q], ci=c%N, cj=(c-ci)/N;
+      for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ni=ci+di, nj=cj+dj; if(ni<0||nj<0||ni>=N||nj>=N) continue;
+        const k=nj*N+ni; if(!vu[k]&&!bloque[k]){ vu[k]=1; file.push(k); } } }
+    const atteint=(p)=>vu[Math.floor(p.x/CEL)+Math.floor(p.y/CEL)*N]===1;
+    verdict(!bloque[i0], L.id+' : le départ de la caverne est muré');
+    verdict(atteint(a.sortie), L.id+' : l\'escalier est inatteignable à pied');
+    verdict(atteint(a.antre), L.id+' : l\'antre de Cerbère est inatteignable à pied');
+    // un coffre se brise de loin, et son butin se ramasse à l'aimant : il suffit qu'une case atteinte soit à moins de 60 px
+    const proche=(p,ray)=>{ const cz=Math.ceil(ray/CEL); for(let dj=-cz;dj<=cz;dj++) for(let di=-cz;di<=cz;di++){
+      const px=Math.floor(p.x/CEL)+di, py=Math.floor(p.y/CEL)+dj;
+      if(px>=0&&py>=0&&px<N&&py<N&&vu[py*N+px]===1&&Math.hypot((px+0.5)*CEL-p.x,(py+0.5)*CEL-p.y)<ray) return true; } return false; };
+    a.coffres.forEach((c,i)=>verdict(proche(c,60), L.id+' : le coffre '+(i+1)+' est hors de portée à pied'));
+    verdict(a.coffres.length>=3, L.id+' : moins de 3 coffres');
+    verdict(a.D>=44, L.id+' : le chemin du départ à l\'escalier est trop court ('+a.D+' cases)');
+    console.log('OK    sous-sol '+L.id.padEnd(8)+' '+a.decor.length+' décors, '+a.murs.length+' pieds, escalier à '+a.D+' cases, '+a.coffres.length+' coffres');
   }
   process.exit(ok?0:1);
 }
