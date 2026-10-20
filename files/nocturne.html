@@ -2252,11 +2252,11 @@ function alea(graine){ let s=graine>>>0; return ()=>{ s=(s*1664525+1013904223)>>
 
 /* sources de lumière portées par certains décors ; f:1 = une flamme, qui
    vacille, les autres lueurs respirent doucement ; onde : la flamme du sprite
-   danse de gauche à droite (voir poserSpriteOnde) — zone = la part haute du
+   danse de gauche à droite (voir poserSpriteOnde ; le brasier, lui, a un sprite animé) — zone = la part haute du
    sprite qui bouge, amp = l'amplitude en fraction de la hauteur, col = le
    nombre de flammes indépendantes côte à côte (trois bougies = 3). */
 const LUMIERES={
-  d_brasier:{r:210,c:PAL.ambre,i:1,f:1, onde:{zone:0.62,amp:0.07,col:1}},
+  d_brasier:{r:210,c:PAL.ambre,i:1,f:1},     // sa flamme est animée image par image (sprite à 8 images)
   d_chandelier:{r:150,c:PAL.ambre,i:0.85,f:1, onde:{zone:0.30,amp:0.05,col:3}},
   d_champignon:{r:95,c:PAL.menthe,i:0.6},
   d_mare:{r:92,c:PAL.vert,i:0.42},
@@ -2292,6 +2292,16 @@ function lampeSur(x,y){
 /* Vacillement d'une lumière : une flamme tremble de façon irrégulière (trois
    sinus sans commune mesure, jamais deux feux en phase) ; une lueur froide
    respire lentement. Rend un facteur autour de 1 pour le rayon du halo. */
+/* L'image d'un décor animé : lecture en boucle au rythme du sprite (fps), chaque
+   objet décalé par sa phase pour que deux feux voisins ne battent pas ensemble.
+   Un décor à image unique rend toujours 0. */
+function imageDecor(o){
+  const s=SPR[o.nom];
+  if(!s || !s.fps || s.cycle.length<2) return 0;
+  const n=s.cycle.length;
+  return s.cycle[(Math.floor(G.t*s.fps + o.ph*n/6.2832)%n+n)%n];
+}
+
 function vacille(o,l){
   const t=G.t, p=o.ph;
   if(l.f) return 1+0.07*Math.sin(t*9.1+p)+0.05*Math.sin(t*14.3+p*2.3)+0.035*Math.sin(t*23.7+p*0.6);
@@ -6273,6 +6283,7 @@ function rendre(dt){
     const x=o.x+ox; let y=o.y+oy;         // y : un ennemi projeté se dessine en l'air
     if(o.type==='decor'){
       const trem=o.flash>0?rnd(-1.5,1.5):0;
+      const fr=imageDecor(o);                     // un décor animé (feu de bois) : l'image du moment
       const vivant=QUAL.part>0.35;                // la vie du décor est la première chose qu'on sacrifie
       const vent=vivant && VENT[o.nom];
       if(vent){                                   // le vent penche le sommet, le pied reste planté
@@ -6287,10 +6298,10 @@ function rendre(dt){
         ombre(x+o.h*0.10,y,o.h*0.24,0.4);
         const lu=LUMIERES[o.nom];
         if(vivant && lu && lu.onde) poserSpriteOnde(o.nom,x+trem,y-o.h/2,o.h,o.flip,lu.onde,o.ph);   // la flamme danse
-        else poserSprite(o.nom,0,x+trem,y-o.h/2,o.h,o.flip);
+        else poserSprite(o.nom,fr,x+trem,y-o.h/2,o.h,o.flip);
         if(vivant && o.nom==='d_fontaine') eauDe(o,x,y);
       }
-      if(o.flash>0) poserSprite(o.nom,0,x+trem,y-o.h/2,o.h,o.flip,Math.min(1,o.flash*9),'blanc');
+      if(o.flash>0) poserSprite(o.nom,fr,x+trem,y-o.h/2,o.h,o.flip,Math.min(1,o.flash*9),'blanc');
       else if(o.brisable && o.pv<o.pvMax){        // fêlé : on le montre entamé
         ctx.globalAlpha=0.35; ctx.fillStyle=PAL.nuit;
         ctx.fillRect(x-o.h*0.16, y-o.h*(0.1+0.5*(o.pv/o.pvMax)), o.h*0.05, o.h*0.22);
