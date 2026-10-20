@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<title>NOCTURNE — vampire-like</title>
+<title>NOCTURNE — jeu de survie roguelike</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -136,6 +136,19 @@
   body.enligne .fiche .pv{margin-top:3px}
   body.enligne .fiche .armes{margin-top:3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   body.enligne .fiche .ult{color:var(--ambre)}
+  /* téléphone : les 18 personnages en petites cartes à 3 colonnes ; la description
+     du personnage choisi s'affiche en dessous (voir dessineMenu) */
+  .desc-perso{display:none}
+  @media (max-width:600px){
+    #sel-p1,#sel-p2{grid-template-columns:repeat(3,1fr);gap:6px}
+    #sel-p1 .opt,#sel-p2 .opt{flex-direction:column;gap:4px;padding:7px 4px;text-align:center;
+      justify-content:flex-start}
+    #sel-p1 .opt .vg,#sel-p2 .opt .vg{max-width:46px;max-height:48px;width:auto}
+    #sel-p1 .opt .n,#sel-p2 .opt .n{font-size:11px;line-height:1.2}
+    #sel-p1 .opt .d,#sel-p2 .opt .d{display:none}
+    .desc-perso{display:block;font-family:var(--mono);font-size:11px;line-height:1.5;
+      color:var(--brume);margin-top:8px;min-height:3em}
+  }
   .table-scores{max-height:52vh;overflow-y:auto;font-family:var(--mono);font-size:12px;
     border:1px solid rgba(233,227,210,.14);background:rgba(12,10,19,.45)}
   .podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:6px 0 16px;
@@ -420,7 +433,7 @@ window.CHARGEMENT = (function(){
 </div>
 
 <div id="menu" class="ecran"><div class="panneau">
-  <h1>NOCTURNE<span class="sub">un vampire-like à deux</span></h1>
+  <h1>NOCTURNE<span class="sub">un jeu de survie roguelike à deux</span></h1>
   <div class="titre-bloc">Nombre de joueurs</div>
   <div class="grille" id="sel-nb"></div>
   <div class="titre-bloc">Personnage — Joueur 1</div>
@@ -571,14 +584,14 @@ window.CHARGEMENT = (function(){
 const CFG = {
 
   personnages: [
-    { id:'sourcier', nom:'Brice de Merris', desc:'Foudre à distance, aimant à butin. Son coup spécial : une volée de nains de jardin.',
+    { id:'sourcier', nom:'Brice de Merris', desc:'Foudre et nains de jardin.',
       sprite:'sourcier', couleur:PAL.menthe, pv:95, vitesse:150, arme:'foudre',
       ultime:'nains',
       mult:{ degats:0.95, cadence:0.85, aimant:1.8, armure:0 } },
-    { id:'muscle', nom:'Titi', desc:'Croix bénite. Cogne fort, encaisse mieux. Il se gonfle quand ça tape.',
+    { id:'muscle', nom:'Titi', desc:'Croix et gros pecs.',
       sprite:'muscle', couleur:PAL.peau, pv:150, vitesse:126, arme:'croix',
       mult:{ degats:1.25, cadence:1.05, aimant:0.9, armure:1 } },
-    { id:'galerien', nom:'Le Galérien', desc:'Jet de bouteilles. Vif, rien à perdre. Son pouvoir : une tornade de bouteilles.',
+    { id:'galerien', nom:'Le Galérien', desc:'Jet de choulette, vif et malin.',
       sprite:'galerien', couleur:PAL.glaceC, pv:90, vitesse:164, arme:'canettes',
       ultime:'bouteilles',
       mult:{ degats:1.0, cadence:0.9, aimant:1.15, armure:0 } },
@@ -600,12 +613,12 @@ const CFG = {
     { id:'marlexlu', nom:'Marlexlu', desc:'Toute la famille. Tétines en couronne, aucun angle mort.',
       sprite:'marlexlu', couleur:PAL.glace, pv:145, vitesse:130, arme:'tetines',
       mult:{ degats:1.0, cadence:1.0, aimant:1.3, armure:1 } },
-    { id:'gagou', nom:'Gagou', desc:'Bulles de savon, et son chien devant. Légère, jamais là où on frappe.',
+    { id:'gagou', nom:'Gagou', desc:'Souffle des bulles de savon et fait la roue.',
       sprite:'gagou', couleur:PAL.savon, pv:95, vitesse:143, arme:'bulles',
       echelle:0.715,                /* taille à l'écran, par rapport aux autres personnages */
       ultime:'roue',                 /* apporte son propre ultime au lieu de celui de son rang */
       mult:{ degats:0.92, cadence:1.2, aimant:1.25, armure:0 } },
-    { id:'arthur', nom:'Arthur', desc:'Sur son skate, mûres à la fronde. Son aimant renvoie les gêneurs au loin.',
+    { id:'arthur', nom:'Arthur', desc:'Rapide sur son skate, envoie des mûres avec sa fronde et aimante les ennemis.',
       sprite:'arthur', couleur:PAL.mure, pv:105, vitesse:162, arme:'mures',
       ultime:'aimant',
       mult:{ degats:1.0, cadence:1.05, aimant:1.1, armure:0 } },
@@ -613,31 +626,31 @@ const CFG = {
       sprite:'leonie', couleur:PAL.balle, pv:100, vitesse:158, arme:'balles',
       ultime:'toupie',
       mult:{ degats:1.05, cadence:1.0, aimant:1.15, armure:0 } },
-    { id:'marie2', nom:'Marie', desc:'Elle court vite et lance des tomates cerises. Son pouvoir : une tornade de tomates tout autour d’elle.',
+    { id:'marie2', nom:'Marie', desc:'Fada des petites tomates, cette beauté dégomme tout.',
       sprite:'marie2', couleur:PAL.tomate, pv:95, vitesse:174, arme:'tomates',
       ultime:'tornade',
       mult:{ degats:1.0, cadence:1.05, aimant:1.2, armure:0 } },
-    { id:'sebou', nom:'Sebou', desc:'Balles de ping-pong qui rebondissent d’un ennemi à l’autre. Son super pouvoir : prendre le volant d’un bus et tout écraser.',
+    { id:'sebou', nom:'Sebou', desc:'Un fou du bus fan des frères Lebrun.',
       sprite:'sebou', couleur:PAL.os, pv:110, vitesse:154, arme:'pingpong',
       ultime:'bus',
       mult:{ degats:1.0, cadence:1.0, aimant:1.1, armure:0 } },
-    { id:'renaud', nom:'Renaud', desc:'Lunettes de soleil, carrure de déménageur. Il souffle une fumée épaisse qui englue ses ennemis. Son pouvoir : lancer d’énormes haltères.',
+    { id:'renaud', nom:'Renaud', desc:'Jamais sans sa vapoteuse, il lance d’énormes haltères.',
       sprite:'renaud', couleur:PAL.sang, pv:140, vitesse:130, arme:'fumee',
       ultime:'halteres',
       mult:{ degats:1.3, cadence:0.9, aimant:0.9, armure:1 } },
-    { id:'swann', nom:'Swann', desc:'Tenue de chantier, bombe de spray jaune fluo : il vaporise tout ce qui approche. Son pouvoir : une couronne de logos Claude.',
+    { id:'swann', nom:'Swann', desc:'Fan des PT test, il n’oublie jamais ses EPI.',
       sprite:'swann', couleur:PAL.spray, pv:115, vitesse:152, arme:'spray',
       ultime:'logos',
       mult:{ degats:1.0, cadence:1.0, aimant:1.1, armure:1 } },
-    { id:'gregou', nom:'Gregou le fou', desc:'Plombier, il lance ses clés à molette. Son pouvoir : tout cramer au chalumeau en tournant sur lui-même.',
+    { id:'gregou', nom:'Gregou le fou', desc:'Clé à molette, et crame tout au chalumeau.',
       sprite:'gregou', couleur:PAL.sang, pv:125, vitesse:148, arme:'cles',
       ultime:'chalumeau',
       mult:{ degats:1.1, cadence:1.0, aimant:1.0, armure:1 } },
-    { id:'camille', nom:'Camille', desc:'En pyjama, fouet à la main : elle cingle tout ce qui approche. Son pouvoir : cracher le feu comme un dragon.',
+    { id:'camille', nom:'Camille', desc:'Frappe fort avec son fouet, elle se transforme en dragon.',
       sprite:'camille', couleur:PAL.os, pv:105, vitesse:158, arme:'fouet',
       ultime:'souffle',
       mult:{ degats:1.1, cadence:1.0, aimant:1.1, armure:0 } },
-    { id:'augustin', nom:'Augustin', desc:'Il bombarde ses ennemis d’œufs de poule. Son pouvoir : chevaucher une poule géante qui court en rond et écrase tout.',
+    { id:'augustin', nom:'Augustin', desc:'Adore les œufs, et chevauche une poule géante.',
       sprite:'augustin', couleur:PAL.ambre, pv:110, vitesse:156, arme:'oeufs',
       ultime:'poule',
       mult:{ degats:1.0, cadence:1.0, aimant:1.15, armure:0 } },
@@ -2644,13 +2657,18 @@ function bouton(parent,{titre,desc,couleur,sprite,actif,onClick}){
 function dessineMenu(){
   const nb=$('sel-nb'); nb.innerHTML='';
   [1,2].forEach(n=>bouton(nb,{titre:n===1?'Solo':'Deux joueurs',
-    desc:n===1?'Une seule vie à tenir.':'XP partagée, relevage mutuel.',
     actif:nbJoueurs===n, onClick:()=>{nbJoueurs=n; dessineMenu();}}));
   $('bloc-p2').style.display = nbJoueurs===2?'block':'none';
   [0,1].forEach(i=>{
     const c=$(i===0?'sel-p1':'sel-p2'); c.innerHTML='';
     CFG.personnages.forEach(p=>bouton(c,{titre:p.nom, desc:p.desc, sprite:p.sprite,
       actif:choixPerso[i]===p.id, onClick:()=>{choixPerso[i]=p.id; dessineMenu();}}));
+    let dp=c.nextElementSibling;
+    if(!dp||!dp.classList.contains('desc-perso')){
+      dp=document.createElement('div'); dp.className='desc-perso'; c.after(dp);
+    }
+    const cp=CFG.personnages.find(p=>p.id===choixPerso[i]);
+    dp.textContent=cp?cp.desc:'';
   });
   const df=$('sel-diff'); df.innerHTML='';
   CFG.difficultes.forEach(d=>bouton(df,{titre:d.nom, desc:d.desc,
