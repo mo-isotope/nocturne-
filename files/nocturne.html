@@ -4974,9 +4974,10 @@ if(/[?&]triche\b/.test(location.search)) $('btn-triche').style.display='block';
    tache le sol ; les flaques restent. Chaque client gère le sien (l'invité
    gicle à chaque mort que l'hôte lui envoie), donc rien ne passe sur le réseau.
    ========================================================================== */
-const GORE={ actif:false, frappe:'', ecran:0, vus:new Map(), taches:null,
+const GORE={ actif:true, frappe:'', ecran:0, vus:new Map(), taches:null,
   rouge:'#a3111a', sombre:'#5e0a0f', vif:'#d01e26', chair:'#d9a58e', os:'#efe4cf' };
-try{ GORE.actif=localStorage.getItem('nocturne-gore')==='1'; }catch(e){}
+// actif par défaut : seul un joueur qui l'a coupé lui-même (« 0 » retenu) le garde coupé
+try{ GORE.actif=localStorage.getItem('nocturne-gore')!=='0'; }catch(e){}
 function basculerGore(force){
   GORE.actif = force!=null ? !!force : !GORE.actif;
   try{ localStorage.setItem('nocturne-gore', GORE.actif?'1':'0'); }catch(e){}
