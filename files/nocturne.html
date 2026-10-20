@@ -559,8 +559,9 @@ const CFG = {
     { id:'muscle', nom:'Titi', desc:'Croix bénite. Cogne fort, encaisse mieux. Il se gonfle quand ça tape.',
       sprite:'muscle', couleur:PAL.peau, pv:150, vitesse:126, arme:'croix',
       mult:{ degats:1.25, cadence:1.05, aimant:0.9, armure:1 } },
-    { id:'galerien', nom:'Le Galérien', desc:'Jet de bouteilles. Vif, rien à perdre.',
+    { id:'galerien', nom:'Le Galérien', desc:'Jet de bouteilles. Vif, rien à perdre. Son pouvoir : une tornade de bouteilles.',
       sprite:'galerien', couleur:PAL.glaceC, pv:90, vitesse:164, arme:'canettes',
+      ultime:'bouteilles',
       mult:{ degats:1.0, cadence:0.9, aimant:1.15, armure:0 } },
     { id:'barbu', nom:'Mymassa', desc:'Lance des billets. Large, rapide, jamais à sec.',
       sprite:'barbu', couleur:PAL.ambreC, pv:112, vitesse:148, arme:'billets',
@@ -815,7 +816,15 @@ const CFG = {
     tornade:{ nom:'Tornade de tomates', couleur:PAL.tomate, charges:2, recharge:34,
       desc:'Marie fait tourbillonner des tomates cerises rouges et jaunes tout autour d’elle.',
       degats:42, rayon:0,
-      tornade:{ duree:2.2, salve:0.07, nb:3, pas:0.55, vitesse:340, portee:360, taille:6, perce:3 } },
+      tornade:{ duree:2.2, salve:0.07, nb:3, pas:0.55, vitesse:340, portee:360, taille:6, perce:3,
+                style:'tomate', couleurs:[PAL.tomate,PAL.tomateJ] } },
+    /* la même tornade, en bouteilles : moins nombreuses, plus lourdes, elles
+       traversent plus d'ennemis et éclatent en tessons au bout de leur course */
+    bouteilles:{ nom:'Tornade de bouteilles', couleur:PAL.vert, charges:2, recharge:34,
+      desc:'Le Galérien fait tourbillonner ses bouteilles tout autour de lui ; elles éclatent en tessons.',
+      degats:60, rayon:0,
+      tornade:{ duree:2.4, salve:0.1, nb:3, pas:0.5, vitesse:320, portee:380, taille:7, perce:4,
+                style:'bouteille', couleurs:[PAL.vert], muet:true } },
     /* 'nains' : une volée de nains de jardin lancés sur les ennemis les plus
        proches. Chacun traverse quelques ennemis avant de se planter.        */
     /* 'elan' avec le bus de Sebou : il fonce droit devant dans une pluie de
@@ -4108,7 +4117,7 @@ function briser(p){
       rot:Math.random()*6.28, vr:rnd(-14,14), l:rnd(2,4.4)}))});
   eclats(p.x, p.y, 9, PAL.vert, 190);
   eclats(p.x, p.y, 4, PAL.os, 130);
-  sfx('casse');
+  if(!p.muet || Math.random()<0.15) sfx('casse');   // la tornade en lâche des dizaines
 }
 
 /* Une bulle qui crève : pas d'éclats, juste un anneau qui s'ouvre et se
@@ -4561,11 +4570,12 @@ function avancerTornade(j,U,dt){
     O.prochaine+=T.salve; O.ang+=T.pas;
     for(let k=0;k<T.nb;k++){
       const a=O.ang+k*6.2832/T.nb, v=T.vitesse*rnd(0.9,1.1);
-      G.projs.push({type:'jet', style:'tomate', x:j.x, y:j.y-8,
+      const C=T.couleurs;
+      G.projs.push({type:'jet', style:T.style, x:j.x, y:j.y-8,
         vx:Math.cos(a)*v, vy:Math.sin(a)*v,
         r:T.taille*rnd(0.85,1.15), degats:D, vie:T.portee/v, perce:T.perce, touche:new Set(),
         rot:rnd(0,6.28), vrot:rnd(6,12)*(Math.random()<0.5?-1:1),
-        couleur:Math.random()<0.55?PAL.tomate:PAL.tomateJ, grade:0});
+        couleur:C[Math.random()<0.55?0:(C.length-1)], grade:0, muet:!!T.muet});
     }
   }
   if(O.t>=T.duree) j.tornade=null;
