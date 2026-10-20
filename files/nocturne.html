@@ -7752,7 +7752,10 @@ function genererSousSol(){
       return o;
     };
     // les murs : un bloc de roche par case de roche qui touche une case libre
-    const echMur=(SPR.d_mur_roche?SPR.d_mur_roche.taille:20), hMur=62;
+    /* Le mur est une maçonnerie : quatre tranches d'un même alignement de blocs, choisies par
+       colonne (décalées à chaque rangée) — côte à côte elles se raccordent, sans motif qui se répète. */
+    const tranche=SPR.d_mur_roche_0?'d_mur_roche_':'d_mur_roche';
+    const echMur=(SPR[tranche+(tranche.endsWith('_')?'0':'')]||{taille:20}).taille, hMur=tranche.endsWith('_')?74:62;
     for(let j=0;j<N;j++) for(let i=0;i<N;i++){
       if(!mur[idx(i,j)]) continue;
       let touche=false;
@@ -7760,7 +7763,7 @@ function genererSousSol(){
         const a=i+di, b=j+dj;
         if(a>=0&&b>=0&&a<N&&b<N && !mur[idx(a,b)]){ touche=true; break; } }
       if(!touche) continue;
-      const o=poserS('d_mur_roche',(i+0.5)*T,(j+0.5)*T,hMur/echMur,null,true);
+      const o=poserS(tranche.endsWith('_')?tranche+((i+2*j)&3):tranche,(i+0.5)*T,(j+0.5)*T+(tranche.endsWith('_')?T*0.08:0),hMur/echMur,{flip:false},true);
       if(!o) continue;
       o.mur=true; murs.push({x:i*T, y:j*T-T*0.35, w:T, h:T*0.85});
     }
