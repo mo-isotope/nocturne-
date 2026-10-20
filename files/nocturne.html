@@ -618,6 +618,10 @@ const CFG = {
       sprite:'camille', couleur:PAL.os, pv:105, vitesse:158, arme:'fouet',
       ultime:'souffle',
       mult:{ degats:1.1, cadence:1.0, aimant:1.1, armure:0 } },
+    { id:'augustin', nom:'Augustin', desc:'Il bombarde ses ennemis d’œufs de poule. Son pouvoir : chevaucher une poule géante qui court en rond et écrase tout.',
+      sprite:'augustin', couleur:PAL.ambre, pv:110, vitesse:156, arme:'oeufs',
+      ultime:'poule',
+      mult:{ degats:1.0, cadence:1.0, aimant:1.15, armure:0 } },
   ],
 
   armes: {
@@ -683,6 +687,10 @@ const CFG = {
                  desc:'Des balles vives, deux à la fois, qui rebondissent d’un ennemi à l’autre.',
                  base:{ degats:8, cadence:0.55, nb:2, vitesse:430, taille:4, perce:2, portee:360 },
                  gain:{ degats:3.5, cadence:-0.035, nb:0.4, vitesse:10, taille:0.3, perce:0.45, portee:18 } },
+    oeufs:     { nom:'Œufs de poule', type:'jet', style:'oeuf', max:6, couleur:PAL.os,
+                 desc:'Des œufs lancés qui éclatent en blanc et en jaune, et éclaboussent autour.',
+                 base:{ degats:12, cadence:0.6, nb:2, vitesse:320, taille:6, perce:1, portee:330 },
+                 gain:{ degats:5, cadence:-0.035, nb:0.5, vitesse:10, taille:0.4, perce:0.2, portee:16 } },
     tomates:   { nom:'Tomates cerises', type:'jet', style:'tomate', max:6, couleur:PAL.tomate,
                  desc:'Une poignée de petites tomates, rouges et jaunes, qui s’écrasent en giclant.',
                  base:{ degats:7, cadence:0.55, nb:3, vitesse:330, taille:4, perce:1, portee:300 },
@@ -813,6 +821,13 @@ const CFG = {
     /* 'tornade' : pendant 'duree', le personnage lâche des projectiles tout
        autour de lui, en spirale (l'angle de départ tourne de 'pas' à chaque
        salve). Chacun traverse quelques ennemis. On garde la main.            */
+    /* 'elan' avec 'cercle' : au lieu de filer droit, la monture tourne en rond
+       (un tour complet en 2·π·rayon/vitesse) autour de son point de départ, et
+       repasse sur ce qu'elle a déjà écrasé — d'où la 'retouche'.            */
+    poule:{ nom:'La poule géante', couleur:PAL.ambre, charges:2, recharge:38,
+      desc:'Augustin monte sur un gros œuf qui devient une poule : elle court en rond 4 s et écrase tout autour.',
+      degats:85, rayon:70,
+      elan:{ duree:4.0, vitesse:330, cercle:{ rayon:130 }, retouche:0.45 } },
     tornade:{ nom:'Tornade de tomates', couleur:PAL.tomate, charges:2, recharge:34,
       desc:'Marie fait tourbillonner des tomates cerises rouges et jaunes tout autour d’elle.',
       degats:42, rayon:0,
@@ -4140,8 +4155,17 @@ function crever(p){
 }
 
 /* La fin d'un projectile de jet, selon ce qu'il est. */
+/* Un œuf qui s'écrase : une flaque de blanc qui s'étale, le jaune au milieu,
+   des bouts de coquille ; quelques gouttes de jaune et de blanc giclent. */
+function casserOeuf(p){
+  G.effets.push({type:'oeuf', x:p.x, y:p.y+4, r:Math.max(15,p.r*3.2), t:0, duree:3,
+                 couleur:PAL.os, sens:Math.round(Math.random()*628)});
+  eclats(p.x, p.y, 4, '#f6c23a', 140);
+  eclats(p.x, p.y, 4, '#fbf6ea', 120);
+}
 function finJet(p){
-  if(p.style==='bouteille') briser(p);
+  if(p.style==='oeuf') casserOeuf(p);
+  else if(p.style==='bouteille') briser(p);
   else if(p.style==='bulle') crever(p);
   else if(p.style==='mure') ecraser(p);
   else if(p.style==='balle') eclats(p.x,p.y,3,PAL.balle,90);
@@ -4420,6 +4444,20 @@ function avancerElan(j,U,dt){
   ro.t-=dt;
   // la toupie ne tient pas son cap : à chaque pas, un coup de volant au
   // hasard, qui penche vers la commande si le joueur en tient une
+  if(E.cercle){
+    // la poule tourne autour du point de départ : elle s'en écarte d'abord en
+    // spirale (0,3 s), puis tient son cercle. On place le personnage sur le
+    // cercle plutôt que de le pousser : sinon il dériverait à chaque mur.
+    if(!ro.centre){ ro.centre={x:j.x,y:j.y}; ro.phi=Math.atan2(-ro.uy,-ro.ux); ro.age=0; }
+    ro.age+=dt;
+    const C=E.cercle, rr=C.rayon*Math.min(1,ro.age/0.3);
+    ro.phi+=(E.vitesse/C.rayon)*dt;
+    const x0=j.x, y0=j.y;
+    j.x=clamp(ro.centre.x+Math.cos(ro.phi)*rr,BORD_JOUEUR,R.arene-BORD_JOUEUR);
+    j.y=clamp(ro.centre.y+Math.sin(ro.phi)*rr,BORD_JOUEUR,R.arene-BORD_JOUEUR);
+    j.vx=(j.x-x0)/dt; j.vy=(j.y-y0)/dt;
+    if(Math.abs(j.vx)>20) j.flip=j.vx<0;
+  }
   if(E.chaos){
     ro.chaos-=dt;
     if(ro.chaos<=0){
@@ -4435,10 +4473,12 @@ function avancerElan(j,U,dt){
       if(Math.abs(ro.ux)>0.15) j.flip=ro.ux<0;
     }
   }
+  if(!E.cercle){
   j.vx=ro.ux*E.vitesse*(ro.v||1); j.vy=ro.uy*E.vitesse*(ro.v||1);
-  const vx0=j.x+j.vx*dt, vy0=j.y+j.vy*dt;
+  var vx0=j.x+j.vx*dt, vy0=j.y+j.vy*dt;
   j.x=clamp(vx0,BORD_JOUEUR,R.arene-BORD_JOUEUR); j.y=clamp(vy0,BORD_JOUEUR,R.arene-BORD_JOUEUR);
   decoincer(j, j.r);
+  }
   // contre un bord ou un mur, la toupie ricoche au lieu de frotter
   if(E.chaos){
     if(Math.abs(j.x-vx0)>0.5) ro.ux=-ro.ux;
@@ -4470,6 +4510,7 @@ function avancerElan(j,U,dt){
   if(ro.t<=0){
     j.roue=null; j.vx=0; j.vy=0;
     eclats(j.x,j.y,12,U.couleur,200);
+    if(E.cercle) eclats(j.x,j.y,10,PAL.os,180);     // la poule repart en plumes
   }
 }
 
@@ -5487,6 +5528,46 @@ function degradeRond(x,y,r,arrets){
   return d;
 }
 
+/* Un œuf au plat, vu un peu de biais : un blanc aux bords ronds et ondulés
+   (une courbe lissée passant par des points tirés autour du centre, jamais de
+   segments droits), légèrement doré sur le pourtour, et le jaune bombé, avec
+   son reflet. Il s'étale en 0,15 s, reste, puis s'efface. 'sens' sert de
+   graine : le même œuf garde la même forme d'une image à l'autre.          */
+function oeufAuPlat(f,x,y){
+  const k=Math.min(1,f.t/0.15), fin=f.t>f.duree-0.6 ? (f.duree-f.t)/0.6 : 1;
+  if(fin<=0) return;
+  const R=f.r*(0.45+0.55*k), g=(f.sens||0)/100, N=9, ap=0.62;
+  const pts=[];
+  for(let i=0;i<N;i++){
+    const a=i/N*6.2832+0.35*Math.sin(g*7+i*3.1);
+    const rr=R*(0.78+0.26*Math.sin(g*5+i*2.3)+0.1*Math.sin(g*11+i*4.7));
+    pts.push([x+Math.cos(a)*rr, y+Math.sin(a)*rr*ap]);
+  }
+  const contour=(dec)=>{
+    ctx.beginPath();
+    const m=(p,q)=>[(p[0]+q[0])/2+dec[0],(p[1]+q[1])/2+dec[1]];
+    let a0=m(pts[N-1],pts[0]); ctx.moveTo(a0[0],a0[1]);
+    for(let i=0;i<N;i++){ const p=pts[i], q=pts[(i+1)%N], mm=m(p,q);
+      ctx.quadraticCurveTo(p[0]+dec[0],p[1]+dec[1],mm[0],mm[1]); }
+    ctx.closePath();
+  };
+  ctx.globalAlpha=fin;
+  ctx.fillStyle='rgba(12,10,19,.35)'; contour([1.5,2]); ctx.fill();      // ombre
+  ctx.fillStyle='#f7f1e3'; contour([0,0]); ctx.fill();                  // le blanc
+  ctx.strokeStyle='rgba(205,160,90,.55)'; ctx.lineWidth=1.4; ctx.stroke(); // bord doré
+  ctx.fillStyle='rgba(255,255,255,.7)';                                 // brillant du blanc
+  ctx.beginPath(); ctx.ellipse(x-R*0.35,y-R*0.22*ap,R*0.28,R*0.1,-0.2,0,6.2832); ctx.fill();
+  const yx=x+R*0.12*Math.sin(g*3), yy=y-R*0.05, Y=R*0.36;
+  ctx.fillStyle='rgba(150,90,10,.45)';                                  // le jaune
+  ctx.beginPath(); ctx.ellipse(yx+1,yy+1.5,Y,Y*0.85,0,0,6.2832); ctx.fill();
+  const gj=ctx.createRadialGradient(yx-Y*0.3,yy-Y*0.35,Y*0.1,yx,yy,Y);
+  gj.addColorStop(0,'#ffe27a'); gj.addColorStop(0.6,'#f6b51c'); gj.addColorStop(1,'#e08e0b');
+  ctx.fillStyle=gj; ctx.beginPath(); ctx.ellipse(yx,yy,Y,Y*0.85,0,0,6.2832); ctx.fill();
+  ctx.fillStyle='rgba(255,255,240,.85)';
+  ctx.beginPath(); ctx.ellipse(yx-Y*0.35,yy-Y*0.35,Y*0.22,Y*0.14,-0.5,0,6.2832); ctx.fill();
+  ctx.globalAlpha=1;
+}
+
 /* --- rendu --- */
 /* ==========================================================================
    RÉSEAU — deux téléphones, via un serveur relais (voir serveur.js).
@@ -5576,11 +5657,11 @@ const CLES_ARMES=Object.keys(CFG.armes);
 const CLES_PERSOS=CFG.personnages.map(p=>p.id);
 const CLES_NIVEAUX=CFG.niveaux.map(l=>l.id);
 const CLES_DIFF=CFG.difficultes.map(d=>d.id);
-const TYPES_EFFET=['foudre','boom','mort','cendre','fil','feucirc','spray','chalumeau','coupfouet','souffle'];
+const TYPES_EFFET=['foudre','boom','mort','cendre','fil','feucirc','spray','chalumeau','coupfouet','souffle','oeuf'];
 /* Le style d'un projectile 'jet' décide de son dessin. Sans lui, l'invité
    voyait toutes les armes de jet en meules de fromage — le style par défaut.
    Un rang dans cette liste coûte un caractère, bien moins que son nom. */
-const STYLES_JET=['fromage','bouteille','billet','tetine','bulle','mure','balle','tomate','nain','pingpong','haltere','claude','cle'];
+const STYLES_JET=['fromage','bouteille','billet','tetine','bulle','mure','balle','tomate','nain','pingpong','haltere','claude','cle','oeuf'];
 
 /* Les couleurs voyagent par leur rang dans une table commune aux deux
    joueurs (toutes celles de la palette et de la configuration) : « 12 »
@@ -6188,6 +6269,9 @@ function rendre(dt){
   }
   ctx.globalAlpha=1;
 
+  /* les œufs au plat d'Augustin : posés au sol, sous les créatures */
+  for(const f of G.effets) if(f.type==='oeuf') oeufAuPlat(f, f.x+ox, f.y+oy);
+
   /* traces au sol : elles restent, et donnent un terrain vécu */
   for(const d of G.decals){
     const x=d.x+ox, y=d.y+oy;
@@ -6769,6 +6853,18 @@ function rendre(dt){
         ctx.fillStyle='#e7b48d'; ctx.fillRect(-R*0.28,-R*0.15,R*0.56,R*0.22); // visage
         ctx.fillStyle='#d6322e';                                               // bonnet
         ctx.beginPath(); ctx.moveTo(-R*0.7,-R*0.2); ctx.lineTo(0,-R*1.5); ctx.lineTo(R*0.7,-R*0.2); ctx.fill();
+      } else if(p.style==='oeuf'){
+        // un œuf de poule : ovale crème, plus large en bas, cerné de sombre,
+        // une ombre sur un côté et un reflet de l'autre
+        ctx.fillStyle='rgba(12,10,19,.72)';
+        ctx.beginPath(); ctx.ellipse(0,0,R*0.95,R*1.25,0,0,6.2832); ctx.fill();
+        ctx.fillStyle='#f7efdd';
+        ctx.beginPath(); ctx.ellipse(0,R*0.05,R*0.8,R*1.08,0,0,6.2832); ctx.fill();
+        ctx.fillStyle='rgba(176,140,96,.35)';
+        ctx.beginPath(); ctx.ellipse(R*0.25,R*0.2,R*0.45,R*0.75,0,0,6.2832); ctx.fill();
+        ctx.fillStyle='#ffffff'; ctx.globalAlpha=0.8;
+        ctx.beginPath(); ctx.ellipse(-R*0.3,-R*0.35,R*0.18,R*0.28,0,0,6.2832); ctx.fill();
+        ctx.globalAlpha=1;
       } else if(p.style==='tomate'){
         // une tomate cerise : ronde, plus sombre en bas, sa collerette verte
         // en étoile et un reflet — la rotation fait tourner la collerette
