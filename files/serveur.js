@@ -87,7 +87,7 @@ const serveur = http.createServer((req, res) => {
     return lireCorps(req).then((c) => {
       const borne = (v, min, max) => Math.max(min, Math.min(max, Number(v) || 0));
       const p = {
-        nom:        nettoyer(c.nom, 16) || 'Anonyme',
+        nom:        nettoyer(c.nom, 16),
         perso:      nettoyer(c.perso, 20),
         terrain:    nettoyer(c.terrain, 24),
         temps:      borne(c.temps, 0, 7200),
@@ -99,6 +99,10 @@ const serveur = http.createServer((req, res) => {
         armes:      nettoyer(c.armes, 220),
         passifs:    nettoyer(c.passifs, 160),
       };
+      if (p.nom.length < 2) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end('{"erreur":"un nom est obligatoire"}');
+      }
       p.score = calculerScore(p);
       p.date = new Date().toISOString().slice(0, 10);
       derniersEnvois.set(cle, now);
@@ -171,7 +175,7 @@ function calculerScore(p) {
   );
 }
 
-const RANGS_DIFF = ['veillee', 'normal', 'cauchemar', 'damnation'];
+const RANGS_DIFF = ['tranquille', 'normal', 'cauchemar', 'damnation'];
 const derniersEnvois = new Map();               // un score / 3 s / adresse
 
 function nettoyer(txt, max) {

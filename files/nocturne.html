@@ -138,15 +138,34 @@
   body.enligne .fiche .ult{color:var(--ambre)}
   .table-scores{max-height:52vh;overflow-y:auto;font-family:var(--mono);font-size:12px;
     border:1px solid rgba(233,227,210,.14);background:rgba(12,10,19,.45)}
-  .table-scores .lg{display:grid;grid-template-columns:28px minmax(60px,1fr) 72px 44px 46px 58px;
+  .podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:6px 0 16px;
+    padding:0 4px}
+  .podium .pl{flex:1 1 0;min-width:0;max-width:210px;display:flex;flex-direction:column;
+    align-items:center;text-align:center;font-family:var(--mono)}
+  .podium .pl canvas{image-rendering:pixelated;margin-bottom:6px;max-width:100%;height:auto}
+  .podium .pnom{font-family:var(--display);font-weight:700;font-size:15px;max-width:100%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .podium .pperso{font-size:12px;color:var(--os);max-width:100%;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .podium .pdiff{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--brume);
+    margin-bottom:6px}
+  .podium .marche{width:100%;display:flex;flex-direction:column;align-items:center;
+    justify-content:flex-start;padding-top:8px;border:1px solid rgba(233,227,210,.2);border-bottom:none;
+    background:linear-gradient(rgba(233,227,210,.10),rgba(233,227,210,.03))}
+  .podium .rang{font-family:var(--display);font-weight:800;font-size:30px;line-height:1}
+  .podium .ppts{font-size:12px;font-weight:600;color:var(--os);margin-top:4px}
+  .podium .p1 .marche{height:96px;border-color:#d9b55a}.podium .p1 .rang{color:#d9b55a}
+  .podium .p2 .marche{height:68px;border-color:#b9bcc4}.podium .p2 .rang{color:#b9bcc4}
+  .podium .p3 .marche{height:50px;border-color:#b8794a}.podium .p3 .rang{color:#b8794a}
+  .table-scores .lg{display:grid;grid-template-columns:28px minmax(60px,1fr) 96px 78px 46px 58px;
     gap:5px;padding:5px 7px;border-bottom:1px solid rgba(233,227,210,.07);
     align-items:center;cursor:pointer}
   .table-scores .lg>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* sur un écran étroit, on retire les colonnes secondaires plutôt que de déborder */
   @media (max-width:520px){
-    .table-scores .lg{grid-template-columns:26px minmax(50px,1fr) 44px 56px}
-    .table-scores .lg>span:nth-child(3),
+    .table-scores .lg{grid-template-columns:26px minmax(44px,1fr) 62px 62px 50px}
     .table-scores .lg>span:nth-child(5){display:none}
+    .podium .pnom{font-size:13px}.podium .pperso{font-size:11px}
     .table-scores .detail{padding-left:26px}
     .table-scores .dt{grid-template-columns:86px 1fr}
   }
@@ -6071,27 +6090,50 @@ async function chargerScores(){
     const DIFF=['Veillée','Nocturne','Cauchemar','Damnation'];
     const CHAP=['I','II','III','IV'];
     const duree=(t)=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
-    c.innerHTML='<div class="lg tete"><span>#</span><span>Joueur</span><span>Perso</span>'
-      +'<span>Diff.</span><span class="pt">Temps</span><span class="pts">Score</span></div>'
-      + liste.map((s,i)=>{
-          const detail=[
-            ['Terrain',   echap(s.terrain)],
-            ['Difficulté',DIFF[s.difficulte]||'?'],
-            ['Chapitre',  (CHAP[(s.chapitre||1)-1]||'?')+(s.victoire?' — victoire':'')],
-            ['Niveau',    s.niveau],
-            ['Éliminations', s.tues],
-            ['Armes',     echap(s.armes)||'—'],
-            ['Passifs',   echap(s.passifs)||'—'],
-            ['Date',      echap(s.date)],
-          ].map(([k,v])=>`<div class="dt"><b>${k}</b><span>${v}</span></div>`).join('');
-          return `<div class="lg" data-i="${i}"><span>${i+1}</span>`
-            +`<span>${echap(s.nom)}${s.victoire?' ★':''}</span>`
-            +`<span>${echap(s.perso)}</span>`
-            +`<span class="pt">${(DIFF[s.difficulte]||'').slice(0,4)}</span>`
-            +`<span class="pt">${duree(s.temps)}</span>`
-            +`<span class="pts">${s.score}</span></div>`
-            +`<div class="detail" id="det-${i}">${detail}</div>`;
-        }).join('');
+    const persoDe=(nom)=>CFG.personnages.find(p=>p.nom===nom);
+    const marche=(s,i)=>{
+      const pd=persoDe(s.perso);
+      return `<div class="pl p${i+1}"><div class="pvg" id="pvg-${i}"></div>`
+        +`<div class="pnom">${echap(s.nom)}${s.victoire?' ★':''}</div>`
+        +`<div class="pperso">${echap(s.perso)||'?'}</div>`
+        +`<div class="pdiff">${DIFF[s.difficulte]||'?'}</div>`
+        +`<div class="marche"><span class="rang">${i+1}</span><span class="ppts">${s.score}</span></div></div>`;
+    };
+    const tete=liste.slice(0,3);
+    // ordre d'un podium : 2e à gauche, 1er au milieu, 3e à droite
+    const ordre=[1,0,2].filter(i=>tete[i]);
+    const podium='<div class="podium">'+ordre.map(i=>marche(tete[i],i)).join('')+'</div>';
+    const ligne=(s,i)=>{
+      const detail=[
+        ['Terrain',   echap(s.terrain)],
+        ['Personnage',echap(s.perso)||'?'],
+        ['Difficulté',DIFF[s.difficulte]||'?'],
+        ['Chapitre',  (CHAP[(s.chapitre||1)-1]||'?')+(s.victoire?' — victoire':'')],
+        ['Niveau',    s.niveau],
+        ['Éliminations', s.tues],
+        ['Temps',     duree(s.temps)],
+        ['Armes',     echap(s.armes)||'—'],
+        ['Passifs',   echap(s.passifs)||'—'],
+        ['Date',      echap(s.date)],
+      ].map(([k,v])=>`<div class="dt"><b>${k}</b><span>${v}</span></div>`).join('');
+      return `<div class="lg" data-i="${i}"><span>${i+1}</span>`
+        +`<span>${echap(s.nom)}${s.victoire?' ★':''}</span>`
+        +`<span>${echap(s.perso)}</span>`
+        +`<span class="pt">${DIFF[s.difficulte]||''}</span>`
+        +`<span class="pt">${duree(s.temps)}</span>`
+        +`<span class="pts">${s.score}</span></div>`
+        +`<div class="detail" id="det-${i}">${detail}</div>`;
+    };
+    c.innerHTML=podium
+      +'<div class="lg tete"><span>#</span><span>Joueur</span><span>Personnage</span>'
+      +'<span>Difficulté</span><span class="pt">Temps</span><span class="pts">Score</span></div>'
+      + liste.slice(3).map((s,k)=>ligne(s,k+3)).join('');
+    // les personnages du podium
+    tete.forEach((s,i)=>{
+      const pd=persoDe(s.perso), h=$('pvg-'+i);
+      if(!pd||!h) return;
+      try{ h.appendChild(vignette(pd.sprite,i===0?96:76,i===0?80:64)); }catch(e){}
+    });
     // une ligne se déplie au clic
     c.querySelectorAll('.lg[data-i]').forEach(l=>{
       l.onclick=()=>{
@@ -6108,13 +6150,15 @@ async function chargerScores(){
 
 async function envoyerScore(){
   if(scoreEnvoye || G.triche) return;
+  const nom=$('fin-nom').value.trim();
+  if(nom.length<2){ $('fin-rang').textContent='Entrez un nom (2 lettres minimum) pour enregistrer.'; $('fin-nom').focus(); return; }
   const b=$('btn-envoyer'); b.disabled=true;
   $('fin-rang').textContent='Envoi…';
   try{
     const r=await fetch(baseServeur()+'/scores',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        nom: $('fin-nom').value || 'Anonyme',
+        nom: nom,
         perso: (G.joueurs[0]&&G.joueurs[0].perso.nom)||'',
         terrain: G.niveau?G.niveau.nom:'',
         temps: Math.round(G.t), tues: G.tues, niveau: G.lvl,
