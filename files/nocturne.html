@@ -821,12 +821,15 @@ const CFG = {
        apparition       cadence ; plafond = base + parNiveau × niveau des armes (au plus max) ; vagues : qui, à partir de quand (secondes de caverne),
                         poids du tirage (p) et nombre maximum en même temps (max)
        cerbere          nombre de golems à tuer pour qu'il arrive, et à quelle distance ; plante : rayon de cueillette
+       indice           à partir de debut (s), des ennemis sortent de la chapelle, à la surface : les rafales dans l'ordre
+                        (n ennemis, un tous les pas secondes), puis un golem tous les golem.pas secondes (max en même temps, total au plus au cours de la partie)
        chapelle.site    laquelle des trois places possibles (0 à 2) : tirée à chaque partie, envoyée aux invités
        geant            ce que donne la plante : échelle d'affichage, rayon de collision, bonus
                         (duree 0 = jusqu'à la fin de la partie)                               */
   sousSol:{
     arene:3200, cellule:46, remplissage:0.455, bord:64,
     chapelle:{ rayon:64, attente:1.3, porte:[-0.28,-0.06], site:0 },
+    indice:{ debut:180, dispersion:90, rafales:[ {e:'araignee',n:10,pas:0.7}, {e:'mineur',n:15,pas:0.7} ], golem:{pas:15, max:8, total:20} },
     effondrement:{ duree:3.2 },
     apparition:{ debut:0.9, parMinute:0.8, base:6, parNiveau:1.5, max:44, distance:[380,760] },
     vagues:[ {t:0,e:'araignee',p:0.6,max:5}, {t:0,e:'mineur',p:0.3,max:4}, {t:18,e:'champignon',p:1}, {t:30,e:'golem',p:1.3,max:3} ],
@@ -3681,6 +3684,7 @@ function demarrer(){
   G.murs=[]; G.salles=[]; G.decals=[]; G.lampes=[];
   if(!(NET.actif && NET.role==='invite')) CFG.sousSol.chapelle.site=(Math.random()*3)|0;   // l'invité reçoit celui de l'hôte
   G.cerbereTue=false;
+  G.indice=null; G.sousChargeIndice=false;
   G.etage=0; G.arene=null; G.bordJ=null; G.sous=null; G.surface=null; G.plante=null; G.effondrement=null; G.niveauSurface=null; G.secret=null;
   G.seuils=null; G.trace=null; G.seuilPris=false;
   G.decor=genererDecor(L); G.brisables=G.decor.filter(o=>o.brisable && !o.mur);
@@ -5418,7 +5422,7 @@ function maj(dt){
   G.shake=Math.max(0,G.shake-dt*28);
 
   if(G.etage){ majSousSol(dt,vivants); if(!G.etage) return; }
-  else { majSecret(dt,vivants); if(G.etage) return; }
+  else { majSecret(dt,vivants); if(G.etage) return; majIndice(dt); }
   const horde=mod==='horde'?2:1;
   if(!G.etage){
     G.spawnAcc+=dt*(R.spawnBase+(G.t/60)*R.spawnParMinute)*horde*G.diff.spawn;
@@ -5987,6 +5991,7 @@ function appliquer(s){
   const prec=NET.courant; NET.courant=s;
   const dtS=prec&&s.H!==undefined&&prec.H!==undefined ? Math.max(0.01,(s.H-prec.H)/1000) : 1/NET.hz;
   G.t=s.T; G.lvl=s.L; G.xp=s.X; G.tues=s.K;
+  if(G.t>=CFG.sousSol.indice.debut-10 && !G.sousChargeIndice){ G.sousChargeIndice=true; chargerSousSol().catch(()=>{}); }
   if(s.Ef){                                   // le sol cède : on joue la chute à l'identique, sans la décider
     if(!G.effondrement && G.secret){
       G.effondrement={ x:G.secret.x, y:G.secret.y, t:s.Ef[0], duree:s.Ef[1], pret:true };
@@ -8014,6 +8019,32 @@ function majSecret(dt,vivants){
     if(S.deja){ S.attente=0; G.fondu={ phase:'noir', t:0, duree:1.1 }; }   // les fois suivantes : un fondu au noir, sans chute
     else lancerEffondrement();
   }
+}
+/* L'indice : dès 3 minutes, la chapelle laisse sortir des créatures de la caverne — d'abord dix araignées, puis
+   quinze squelettes, puis un golem toutes les 15 s. De quoi mettre les joueurs sur la piste du sous-sol. */
+function majIndice(dt){
+  const C=CFG.sousSol.indice, S=G.secret;
+  if(!S || S.etat!=='actif' || G.t<C.debut) return;
+  if(!G.sousChargeIndice){ G.sousChargeIndice=true; chargerSousSol().catch(()=>{}); }   // leurs images en dépendent
+  if(!SPR.s_araignee || !SPR.s_golem) return;
+  const I=G.indice||(G.indice={ r:0, k:0, acc:0, golems:0 });
+  I.acc-=dt; if(I.acc>0 || G.effondrement || G.fondu) return;
+  let cle, pas;
+  if(I.r<C.rafales.length){ const R=C.rafales[I.r]; cle=R.e; pas=R.pas; if(++I.k>=R.n){ I.r++; I.k=0; } }
+  else {
+    if(I.golems>=C.golem.total) return;                 // vingt golems envoyés : l'indice est donné
+    pas=C.golem.pas; cle='golem';
+    if(G.ennemis.reduce((n,e)=>n+(e.def===CFG.ennemis.golem?1:0),0)>=C.golem.max){ I.acc=pas; return; }
+  }
+  I.acc=pas;
+  if(G.ennemis.length>=CFG.regles.ennemisMax) return;
+  if(cle==='golem') I.golems++;
+  const def=CFG.ennemis[cle], D=G.diff||{pv:1,degats:1}, a=Math.random()*6.2832, d=20+Math.random()*C.dispersion;
+  const pv=def.pv*(1+(G.t/60)*CFG.regles.pvParMinute)*D.pv;
+  const x=S.x+Math.cos(a)*d, y=S.y+Math.sin(a)*d*0.7;
+  G.ennemis.push({ type:'ennemi', def, x, y, apparition:0.6, pv, pvMax:pv, r:def.taille, vitesse:def.vitesse*rnd(0.9,1.1),
+    degats:def.degats*D.degats, xp:def.xp, boss:false, flash:0, phase:Math.random()*6.28, flip:false, anim:Math.random()*10 });
+  eclats(x,y,6,PAL.ambre,90);
 }
 function lancerEffondrement(){
   const S=G.secret, C=CFG.sousSol;
