@@ -5263,7 +5263,9 @@ majBoutonsGore();
 let dernier=performance.now(), tImagePrec=performance.now();
 function boucle(now){
   requestAnimationFrame(boucle);
-  const dt=Math.min(0.05,(now-dernier)/1000); dernier=now;
+  /* Jamais négatif : sur Android l'horodatage de la première image peut précéder le performance.now()
+     de l'instant du départ ; un pas de temps négatif faisait reculer le temps et monter les minuteurs. */
+  const dt=Math.max(0,Math.min(0.05,(now-dernier)/1000)); dernier=now;
   jaugerQualite((now-tImagePrec)||16); tImagePrec=now;
   for(let i=0;i<2;i++){
     const p=pads()[i], j=G.joueurs[NET.actif?NET.moi:i];
