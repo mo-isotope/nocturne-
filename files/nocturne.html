@@ -2279,7 +2279,7 @@ function fabriquerEtalonnage(A){
   }
 }
 function resize(){
-  DPR=Math.min(devicePixelRatio||1, TACTILE?2:2);
+  DPR=Math.min(devicePixelRatio||1, 1.5);
   W=innerWidth; H=innerHeight;
   // on garde au moins 620 unités de monde en largeur : indispensable sur téléphone
   ZOOM=Math.min(1, W/620, H/560);

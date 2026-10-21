@@ -43,6 +43,65 @@ const TYPES = {
   '.ico':  'image/x-icon',
 };
 
+/* ============================================================================
+   FICHIERS STATIQUES : compression + cache
+   sprites.js pèse ~16 Mo (images en base64) : sans compression chaque visite le
+   retélécharge en entier. Les fichiers texte sont compressés (brotli, sinon
+   gzip) une seule fois puis gardés en mémoire ; tout fichier porte un ETag, donc
+   un navigateur qui l'a déjà reçoit un 304 vide. Les MP3 et images, qui ne
+   changent pas souvent, sont gardés une journée sans même redemander.
+   ========================================================================== */
+const zlib = require('zlib');
+const COMPRESSIBLES = new Set(['.html', '.js', '.css', '.json', '.svg']);
+const CACHE_LONG = new Set(['.mp3', '.ogg', '.wav', '.png', '.jpg', '.ico']);
+const compresses = new Map();      // fichier -> { cle, br, gz }
+
+function servirFichier(req, res, fichier) {
+  fs.stat(fichier, (err, st) => {
+    if (err || !st.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Fichier introuvable. Avez-vous bien déposé nocturne.html à côté de serveur.js ?');
+    }
+    const ext = path.extname(fichier).toLowerCase();
+    const cle = st.size + '-' + Math.floor(st.mtimeMs);
+    const etag = '"' + cle + '"';
+    const entetes = {
+      'Content-Type': TYPES[ext] || 'application/octet-stream',
+      'ETag': etag,
+      'Cache-Control': CACHE_LONG.has(ext) ? 'public, max-age=86400' : 'no-cache',
+      'Vary': 'Accept-Encoding',
+    };
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, entetes); return res.end();
+    }
+    const accepte = String(req.headers['accept-encoding'] || '');
+    if (!COMPRESSIBLES.has(ext)) {
+      entetes['Content-Length'] = st.size;
+      res.writeHead(200, entetes);
+      if (req.method === 'HEAD') return res.end();
+      return fs.createReadStream(fichier).on('error', () => res.destroy()).pipe(res);
+    }
+    fs.readFile(fichier, (e2, contenu) => {
+      if (e2) { res.writeHead(404); return res.end(); }
+      let c = compresses.get(fichier);
+      if (!c || c.cle !== cle) {
+        c = { cle,
+          br: zlib.brotliCompressSync(contenu, { params: {
+            [zlib.constants.BROTLI_PARAM_QUALITY]: 5,
+            [zlib.constants.BROTLI_PARAM_SIZE_HINT]: contenu.length } }),
+          gz: zlib.gzipSync(contenu, { level: 6 }) };
+        compresses.set(fichier, c);
+      }
+      let corps = contenu;
+      if (accepte.includes('br')) { corps = c.br; entetes['Content-Encoding'] = 'br'; }
+      else if (accepte.includes('gzip')) { corps = c.gz; entetes['Content-Encoding'] = 'gzip'; }
+      entetes['Content-Length'] = corps.length;
+      res.writeHead(200, entetes);
+      res.end(req.method === 'HEAD' ? undefined : corps);
+    });
+  });
+}
+
 const serveur = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
 
@@ -135,15 +194,7 @@ const serveur = http.createServer((req, res) => {
     res.writeHead(403); return res.end('Interdit');
   }
 
-  fs.readFile(fichier, (err, contenu) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end('Fichier introuvable. Avez-vous bien déposé nocturne.html à côté de serveur.js ?');
-    }
-    const type = TYPES[path.extname(fichier).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
-    res.end(contenu);
-  });
+  servirFichier(req, res, fichier);
 });
 
 /* ============================================================================
