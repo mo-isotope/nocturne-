@@ -699,10 +699,6 @@ const CFG = {
                  desc:'Un nuage qui ronge et englue tout ce qui s’y attarde.',
                  base:{ degats:7, cadence:1.5, nb:1, rayon:62, duree:4.2 },
                  gain:{ degats:3.2, cadence:-0.08, nb:0.28, rayon:9, duree:0.35 } },
-    mine:      { nom:'Reliquaire', type:'mine', max:6, couleur:PAL.spectre,
-                 desc:'Pose des reliques qui explosent après 2 s.',
-                 base:{ degats:30, cadence:2.5, nb:1, rayon:78, delai:2 },
-                 gain:{ degats:11, cadence:-0.075, nb:0.24, rayon:6 } },
     bulles:    { nom:'Bulles de savon', type:'jet', style:'bulle', max:6, couleur:PAL.savon,
                  desc:'Elles flottent vers l’ennemi, le traversent, et finissent par éclater.',
                  base:{ degats:9, cadence:0.6, nb:3, vitesse:210, taille:7, perce:2, portee:290 },
@@ -4260,11 +4256,6 @@ function tirer(j,a,dt,g){
           grade:(a.niveau-1)/(a.def.max-1)});
       }
       break; }
-    case 'mine':
-      for(let k=0;k<s.nb;k++)
-        G.projs.push({type:'mine',x:j.x+rnd(-30,30),y:j.y+rnd(-30,30),vx:0,vy:0,r:7,
-          degats:s.degats,vie:s.delai,rayon:s.rayon,couleur:a.def.couleur});
-      break;
     case 'boomerang': {
       const c=ennemiProche(j.x,j.y,900);
       const base=c?Math.atan2(c.y-j.y,c.x-j.x):Math.atan2(j.dir.y,j.dir.x);
@@ -5519,17 +5510,6 @@ function maj(dt){
 
   for(let i=G.projs.length-1;i>=0;i--){
     const p=G.projs[i]; p.vie-=dt;
-    if(p.type==='mine'){
-      if(p.vie<=0){
-        for(const e of autour(g,p.x,p.y,p.rayon+30))
-          if(dist2(p.x,p.y,e.x,e.y)<(p.rayon+e.r)**2) frapper(e,p.degats,p.couleur);
-        G.effets.push({type:'boom',x:p.x,y:p.y,r:p.rayon,t:0,duree:0.32,couleur:p.couleur});
-        marquer(p.x, p.y, p.rayon*0.75, PAL.nuit, 0.42);
-        eclats(p.x,p.y,14,p.couleur,220);
-        G.projs.splice(i,1); G.shake=Math.max(G.shake,3);
-      }
-      continue;
-    }
     if(p.type==='boom'){
       if(!p.retour && Math.hypot(p.x-p.ox,p.y-p.oy)>=p.portee) p.retour=true;
       if(p.retour){
@@ -6973,13 +6953,7 @@ function rendre(dt){
   for(const p of G.projs){
     const x=p.x+ox, y=p.y+oy;
     if(p.type==='jet') ombre(x,y+p.r*1.1,p.r*0.7,0.26);
-    if(p.type==='mine'){
-      const pulse=0.55+Math.abs(Math.sin(p.vie*14))*0.45;
-      ctx.globalAlpha=pulse; ctx.fillStyle=p.couleur;
-      ctx.beginPath(); ctx.arc(x,y,p.r,0,6.2832); ctx.fill();
-      ctx.globalAlpha=1; ctx.fillStyle=PAL.os;
-      ctx.beginPath(); ctx.arc(x-1.5,y-1.5,1.6,0,6.2832); ctx.fill();
-    } else if(p.type==='jet'){
+    if(p.type==='jet'){
       const R=p.r, gr=p.grade||0;
       ctx.save(); ctx.translate(x,y); ctx.rotate(p.rot);
       if(p.style==='bouteille'){
