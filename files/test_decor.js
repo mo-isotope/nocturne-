@@ -191,7 +191,7 @@ if(require.main===module){
       verdict(!!S, L.id+' site '+s+' : pas de chapelle');
       if(!S) continue;
       pos.push([Math.round(S.o.x),Math.round(S.o.y)]);
-      const voisin=d.filter(o=>o!==S.o && !o.secret && Math.hypot(o.x-S.o.x,o.y-S.o.y)<380);
+      const voisin=d.filter(o=>o!==S.o && !o.secret && !o.vortex && !o.anneau && !o.couvre && !/^d_pierre_/.test(o.nom) && Math.hypot(o.x-S.o.x,o.y-S.o.y)<380);
       verdict(voisin.length===0, L.id+' site '+s+' : '+voisin.length+' décor(s) à moins de 380 px de la chapelle ('+voisin.slice(0,3).map(o=>o.nom).join(',')+')');
       verdict(Math.hypot(S.o.x-G.depart.x,S.o.y-G.depart.y)>=2000, L.id+' site '+s+' : trop près du départ');
     }
@@ -200,5 +200,26 @@ if(require.main===module){
     console.log('OK    chapelle '+L.id.padEnd(8)+' '+pos.map(q=>q.join(',')).join('  |  '));
   }
   CFG.sousSol.chapelle.site=0;
+  /* les vortex : quatre entrées cachées sous des buissons, un cinquième près de la chapelle, tout atteignable à pied */
+  for(const L of CFG.niveaux){
+    const d=genererDecor(L), V=G.vortex;
+    verdict(!!V && V.entrees.length===CFG.vortex.nb && !!V.cinq, L.id+' : vortex absents ou incomplets');
+    if(!V || !V.cinq) continue;
+    const dep=G.depart, S=G.secret;
+    for(const v of V.entrees){
+      verdict(v.couv.length>=CFG.vortex.couverture[0], L.id+' : une entrée de vortex a trop peu de buissons ('+v.couv.length+')');
+      verdict(v.couv.every(b=>b.brisable&&b.pv>0), L.id+' : un buisson de couverture est indestructible');
+      verdict(Math.hypot(v.x-dep.x,v.y-dep.y)>=1500, L.id+' : une entrée de vortex est trop près du départ');
+      verdict(Math.hypot(v.x-S.x,v.y-S.y)>=1000, L.id+' : une entrée de vortex est trop près de la chapelle');
+      verdict(!v.eteinte===false, L.id+' : une entrée doit commencer cachée');
+    }
+    verdict(Math.hypot(V.cinq.x-S.o.x,V.cinq.y-S.o.y)<450, L.id+' : le cinquième vortex est loin de la chapelle');
+    verdict(Math.hypot(V.cinq.x-S.x,V.cinq.y-S.y)>=150, L.id+' : le cinquième vortex couvre la porte de la chapelle');
+    const arr={x:V.cinq.x+CFG.vortex.arrivee[0]-30,y:V.cinq.y+CFG.vortex.arrivee[1]};
+    verdict(!G.murs.some(m=>!m.inactif && arr.x>m.x-18 && arr.x<m.x+m.w+18 && arr.y>m.y-18 && arr.y<m.y+m.h+18), L.id+' : arrivée du vortex dans un mur');
+    const nb=d.filter(o=>o.brisable && /^d_buisson_/.test(o.nom)).length;
+    verdict(nb>=120, L.id+' : trop peu de buissons ('+nb+')');
+    console.log('OK    vortex   '+L.id.padEnd(8)+' '+V.entrees.map(v=>Math.round(v.x)+','+Math.round(v.y)).join(' | ')+'  -> '+Math.round(V.cinq.x)+','+Math.round(V.cinq.y)+'  ('+nb+' buissons)');
+  }
   process.exit(ok?0:1);
 }

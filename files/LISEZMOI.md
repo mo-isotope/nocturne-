@@ -13,7 +13,7 @@ Tous dans le dossier `files/`, **côte à côte** (le jeu les cherche à côté 
 
 - `serveur.js`, `stockage.js`, `package.json` — le relais
 - `nocturne.html` — le jeu lui-même
-- `sprites.js` — les images du jeu (≈ 16 Mo, chargé au démarrage)
+- `sprites.js` — les images du jeu (≈ 21 Mo, chargé au démarrage)
 - `sprites_sous_sol.js` — les images du sous-sol (≈ 13 Mo), **chargé seulement quand on
   s'en approche** : sans lui, la chapelle secrète ne peut pas s'ouvrir
 - les musiques : `musique_gel.mp3`, `piste_*.mp3` et le dossier `musiques/`
