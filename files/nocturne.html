@@ -3099,6 +3099,7 @@ function genererDecor(L){
     const o={ type:'decor', id:id++, nom, x, y, h, flip:r()>0.5, ph:r()*6.28, flash:0 };
     const br=CFG.brisables[nom];
     if(br){ o.brisable=true; o.butin=br.butin; o.pv=br.pv; o.pvMax=br.pv; o.r=h*0.30; }
+    if(nom==='d_tombe' && o.id%3===0) o.butin=null;       // une tombe sur trois est vide : un tiers de reliques en moins
     if(extra) Object.assign(o,extra);
     // un décor plein arrête joueurs et créatures : ses pieds rejoignent les murs
     const pieds=empreintesDecor(nom,x,y,h,o.flip);
