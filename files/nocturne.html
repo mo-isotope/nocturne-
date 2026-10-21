@@ -3363,14 +3363,18 @@ function genererDecor(L){
       const s=SPR.d_chapelle_lumineuse, ch=G.secret.o, larg=s?ch.h*s.w/s.h:ch.h*0.6;
       const cx=Math.min(A-BORD_DECOR-200, ch.x+larg*0.5+130), cy=ch.y+10;
       if(SPR.d_anneau){
-        const ring=poser('d_anneau',cx,cy+0.39*SPR.d_anneau.taille,1,{ anneau:true, ys:cy-70, flip:false },true);
+        const ech=0.72;                                    // le cercle, réduit : le centre du sol du cercle reste sur le vortex
+        poser('d_anneau',cx,cy+0.39*SPR.d_anneau.taille*ech,ech,{ anneau:true, ys:cy-70, flip:false },true);
       }
       cinq=vortexA('d_vortex_or',cx,cy,{ cinq:true });
       for(let k=0;k<9;k++){                                   // deux rangées de buissons devant, quelques blocs entre
         const rang=k<5, x=cx+(rang?(k-2)*58:((k-5)-1.5)*66)+(r()-0.5)*14, y=cy+(rang?24:54)+(r()-0.5)*10;
         buisson(grands[(r()*grands.length)|0],x,y,0.95+r()*0.2);
       }
-      for(let k=0;k<3 && pierres.length;k++) poser(pierres[(r()*pierres.length)|0],cx+(k-1)*92+(r()-0.5)*20,cy+36+(r()-0.5)*12,0.75+r()*0.2,null,true);
+      for(let k=0;k<3 && pierres.length;k++){                 // trois blocs tirés, un seul posé (sur le côté) : le vortex reste en partie visible
+        const nom=pierres[(r()*pierres.length)|0], x=cx+(k-1)*92+(r()-0.5)*20, y=cy+36+(r()-0.5)*12, e=0.75+r()*0.2;
+        if(k===2) poser(nom,x,y,e,null,true);
+      }
       for(const sx of [-1,1]) buisson(grands[(r()*grands.length)|0],cx+sx*128,cy+14,0.9+r()*0.15);
     }
     G.vortex={ entrees, cinq, cd:0, ok:!!cinq };
