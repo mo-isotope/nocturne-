@@ -794,9 +794,9 @@ const CFG = {
                  trot:{ foulee:70, repos:0.2, vMarche:30, rebond:1.2, tangue:0.03 } },
     champignon:{ nom:'Champignon errant',     sprite:'s_champignon', pv:100, vitesse:50, degats:9,  taille:19, xp:5, erratique:1,
                  trot:{ foulee:46, repos:0.3, vMarche:28, rebond:1.6, tangue:0.05 } },
-    golem:     { nom:'Golem de cristal',      sprite:'s_golem',    pv:560, vitesse:34,  degats:30, taille:30, xp:22,
+    golem:     { nom:'Golem de cristal',      sprite:'s_golem',    pv:560, vitesse:34,  degats:30, taille:57, xp:22,
                  trot:{ foulee:90, repos:0.15, vMarche:20, rebond:1.0, tangue:0.02 } },
-    cerbere:   { nom:'Cerbère',               sprite:'b_cerbere',  pv:2800, vitesse:58, degats:26, taille:46, xp:300,
+    cerbere:   { nom:'Cerbère',               sprite:'b_cerbere',  pv:4200, vitesse:58, degats:26, taille:110, xp:300,
                  comportement:'cerbere',
                  trot:{ foulee:150, repos:0.1, vMarche:40, rebond:1.2, tangue:0.015 } },
   },
@@ -828,13 +828,13 @@ const CFG = {
   sousSol:{
     arene:3200, cellule:46, remplissage:0.455, bord:64,
     duree:210, eboulement:0.05,
-    chapelle:{ rayon:46, attente:1.3, porte:[-0.28,-0.06] },
+    chapelle:{ rayon:64, attente:1.3, porte:[-0.28,-0.06] },
     effondrement:{ duree:3.2 },
     apparition:{ debut:1.4, parMinute:1.2, max:30, distance:[380,760] },
     vagues:[ {t:0,e:'araignee'}, {t:22,e:'mineur'}, {t:50,e:'champignon'}, {t:90,e:'golem'} ],
     coffres:5,
     cerbere:{ reveil:520 }, plante:{ rayon:46 },
-    geant:{ echelle:3, collision:1.5, degats:1.6, pv:1.5, vitesse:1.05, aimant:1.5, duree:0 },
+    geant:{ echelle:1.5, collision:1.5, degats:1.6, pv:1.5, vitesse:1.05, aimant:1.5, duree:0 },
     niveau:{ id:'sous-sol', nom:'Le Sous-sol', sol:'#141b27', grains:[], teinte:'#7fb2cc', modif:null, duree:900,
       decor:[], densite:0, particules:{type:'poussiere', couleur:'#726f8c'},
       ambiance:{ obscurite:0.58, nuit:'#0c0a13', rim:'#bfe2f0', brume:'#2a3a52', brumeN:6,
@@ -975,6 +975,7 @@ const CFG = {
     d_gravats:    {pv:12},
     d_cage:       {pv:20, butin:'soin'},
     d_coffre:     {pv:30, butin:'tresor'},
+    d_caisse:     {pv:16, butin:'xp'},          // sous-sol : le butin (relique ou fiole) est tiré à la pose
     d_baril:      {pv:18},
     d_herbes:     {pv:8},
     d_crane:      {pv:12},
@@ -1004,7 +1005,7 @@ const CFG = {
   decors:{
     regles:{
       /* monuments : un seul par rayon donné */
-      d_chapelle:{iso:3400,fond:0,emp:0.3,ech:[4.4,5]}, d_chapelle_lumineuse:{iso:99999,fond:0,emp:0.3,ech:[4.4,4.4]}, d_grange:{iso:1500,fond:0,emp:0.35,ech:[4.2,4.8]},
+      d_chapelle:{iso:3400,fond:0,emp:0.3,ech:[4.4,5]}, d_chapelle_lumineuse:{iso:99999,fond:0,emp:0.3,ech:[9.68,9.68]}, d_grange:{iso:1500,fond:0,emp:0.35,ech:[4.2,4.8]},
       d_moulin_v:{iso:2200,fond:0,emp:0.3,ech:[4.2,4.8]}, d_etable:{iso:700,fond:0,emp:0.3,ech:[3.8,4.4]},
       d_four_a:{iso:600,fond:0,ech:[3,3.4]}, d_maisons:{esp:1.5,fond:0,emp:0.3,ech:[3.8,4.4]}, d_cabane_b:{iso:500,fond:0,emp:0.3,ech:[3.4,4]},
       d_arche:{iso:900,fond:0,emp:0.3}, d_arche_m:{iso:1400,fond:0}, d_obelisque:{iso:600,fond:0},
@@ -2356,7 +2357,7 @@ const LUMIERES={
   d_brasier:{r:210,c:PAL.ambre,i:1,f:1},     // sa flamme est animée image par image (sprite à 8 images)
   d_chandelier:{r:150,c:PAL.ambre,i:0.85,f:1, onde:{zone:0.30,amp:0.05,col:3}},
   d_lanterne:{r:170,c:PAL.ambre,i:0.9,f:1},               // le sous-sol
-  d_chapelle_lumineuse:{r:270,c:PAL.ambre,i:1},           // la chapelle du passage secret
+  d_chapelle_lumineuse:{r:470,c:PAL.ambre,i:1},           // la chapelle du passage secret
   d_champignon:{r:95,c:PAL.menthe,i:0.6},
   d_mare:{r:92,c:PAL.vert,i:0.42},
   d_cuve:{r:110,c:PAL.vert,i:0.5},
@@ -6661,7 +6662,6 @@ function rendre(dt){
     } else {
       const kg=(o.geant?o.echelleGeant:1)*(o.tombe>0?Math.max(0.04,1-o.tombe):1);   // le géant, ou celui que le sol avale
       const haut=Math.round(38*1.7*ECH_JOUEUR*(o.perso.echelle||1)*kg);   // 65 px à x1,7, puis +30 % pour tous les personnages jouables
-      if(o.geant && !o.aterre && SPR.aura_geant) dessinerAura(x,y,haut);
       if(o.aterre){
         ombre(x,y+10,16,0.34);
         ctx.save(); ctx.translate(x,y+8); ctx.rotate(1.35);
@@ -7773,7 +7773,7 @@ function genererSousSol(){
     const centreC=(c)=>centre(c);
     // les cases libres, dans l'ordre : stalagmites contre la roche, bric-à-brac au milieu
     const EXTRA=[
-      ['d_caisse',0.008,[2.6,3.4]], ['d_chariot_mine',0.005,[3.2,3.8]], ['d_pioche',0.006,[2.4,3]],
+      ['d_caisse',0.012,[2.6,3.4]], ['d_chariot_mine',0.005,[3.2,3.8]], ['d_pioche',0.006,[2.4,3]],
       ['d_tas_charbon',0.007,[2.8,3.6]], ['d_squelette_mineur',0.005,[2.6,3.2]],
       ['d_lanterne',0.006,[2.8,3.2]],
     ];
@@ -7790,7 +7790,17 @@ function genererSousSol(){
       } else {
         const u=r(); let cum=0;
         for(const [nom,p,ech] of EXTRA){ cum+=p;
-          if(u<cum){ poserS(nom,x,y,ech[0]+r()*(ech[1]-ech[0])); break; } }
+          if(u<cum){
+            if(nom==='d_caisse'){
+              /* des caisses par tas de deux à cinq, qui se brisent : une fiole de sang ou une relique dedans */
+              const n=2+((r()*4)|0); let posees=0;
+              for(let k=0;k<14 && posees<n;k++){
+                const a=r()*6.2832, d=posees?30+r()*34:0;
+                const o=poserS('d_caisse',x+Math.cos(a)*d,y+Math.sin(a)*d*0.8,ech[0]+r()*(ech[1]-ech[0]));
+                if(o){ posees++; o.butin=r()<0.45?'soin':'xp'; }
+              }
+            } else poserS(nom,x,y,ech[0]+r()*(ech[1]-ech[0]));
+            break; } }
         // un chariot roule sur ses rails : deux segments de chaque côté
         const dernier=decor[decor.length-1];
         if(dernier && dernier.nom==='d_chariot_mine' && dernier.id===id-1){
@@ -7807,7 +7817,7 @@ function genererSousSol(){
     const cof=[], objCof=[];
     for(const c of coffres){ const p=centreC(c); objCof.push(poserS('d_coffre',p.x,p.y,3.2,{dansSalle:true},true)); cof.push(p); }
     const pSor=centreC(sor);
-    poserS('d_escalier',pSor.x,pSor.y,3.4,{ escalier:true },true);
+    poserS('d_escalier',pSor.x,pSor.y,8.84,{ escalier:true },true);
 
     /* Rien de ce qu'on a posé ne doit couper la route : on refait, sur les murs et les pieds du décor, le calcul
        que ferait un joueur de 18 px de rayon. L'escalier et l'antre doivent s'atteindre ; un coffre qui ne
@@ -8070,7 +8080,7 @@ function majSousSol(dt,vivants){
     }
   }
   // l'escalier : retour à la surface, sans récompense
-  if(vivants.some(j=>dist2(j.x,j.y,S.sortie.x,S.sortie.y)<64*64)){ remonter(null); return; }
+  if(vivants.some(j=>dist2(j.x,j.y,S.sortie.x,S.sortie.y)<135*135)){ remonter(null); return; }
   // la plante : elle pousse d'abord, puis on peut la cueillir
   if(G.plante){
     const P=G.plante; P.t+=dt;
