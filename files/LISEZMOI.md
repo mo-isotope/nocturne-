@@ -9,13 +9,31 @@ retenir, et le jeu trouve son relais tout seul.
 
 ## Les fichiers à déposer
 
-Quatre fichiers, tous **à la racine du dépôt**, côte à côte :
+Tous dans le dossier `files/`, **côte à côte** (le jeu les cherche à côté de la page) :
 
-- `serveur.js`
-- `stockage.js`
-- `package.json`
+- `serveur.js`, `stockage.js`, `package.json` — le relais
 - `nocturne.html` — le jeu lui-même
-- `LISEZMOI.md` (facultatif)
+- `sprites.js` — les images du jeu (≈ 16 Mo, chargé au démarrage)
+- `sprites_sous_sol.js` — les images du sous-sol (≈ 13 Mo), **chargé seulement quand on
+  s'en approche** : sans lui, la chapelle secrète ne peut pas s'ouvrir
+- les musiques : `musique_gel.mp3`, `piste_*.mp3` et le dossier `musiques/`
+- `_headers` et `_redirects` — le cache et l'adresse `/nocturne` du site Cloudflare
+- `LISEZMOI.md` et `test_decor.js` (facultatifs)
+
+Les fichiers de sauvegarde `*.avant-*` restent sur le disque mais ne sont ni dans le dépôt
+ni servis. À la racine du dépôt, `wrangler.jsonc` indique à Cloudflare de publier le
+dossier `files/` : un fichier de plus de 25 Mo y est refusé, les deux fichiers de sprites
+sont donc à surveiller si on les alourdit encore.
+
+## Vérifier la génération des cartes
+
+```bash
+node test_decor.js
+```
+
+Contrôle sur les six niveaux : décors, atteignabilité du départ et des Seuils, chapelle
+secrète (ses trois places possibles, isolées, porte accessible) et caverne du sous-sol
+(départ, escalier, coffres). Code de sortie 0 si tout va bien.
 
 ## Essayer chez soi d'abord
 
