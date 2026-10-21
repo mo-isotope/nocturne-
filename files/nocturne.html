@@ -5991,6 +5991,7 @@ function appliquer(s){
   G.t=s.T; G.lvl=s.L; G.xp=s.X; G.tues=s.K;
   if(s.Ef){                                   // le sol cède : on joue la chute à l'identique, sans la décider
     if(!G.effondrement && G.secret){
+      diagnosticSol('appliquer (invité)');
       G.effondrement={ x:G.secret.x, y:G.secret.y, t:s.Ef[0], duree:s.Ef[1], pret:true };
       chargerSousSol().catch(()=>{});
     } else if(G.effondrement) G.effondrement.t=s.Ef[0];
@@ -7871,6 +7872,7 @@ function faireRoche(gen){
 
 function descendre(){
   if(G.etage || !G.secret) return;
+  diagnosticSol('descendre');
   const C=CFG.sousSol, z=G.secret;
   // le trou reste à la surface, la chapelle s'éteint
   G.decor.push({ type:'decor', id:900001, nom:'d_trou', x:z.x, y:z.y+DECAL_TROU, h:SPR.d_trou?SPR.d_trou.taille*3.2:128, flip:false, ph:0, flash:0, plat:true });
@@ -8014,7 +8016,23 @@ function majSecret(dt,vivants){
   S.attente = dedans && S.arme ? S.attente+dt : Math.max(0,S.attente-dt*2);
   if(S.attente>=C.chapelle.attente) lancerEffondrement();
 }
+/* Diagnostic : si le sol cède trop tôt, on l'écrit à l'écran (toucher pour fermer) avec de quoi comprendre. */
+function diagnosticSol(src){
+  try{
+    if(G.t>20 || document.getElementById('diag-sol')) return;
+    const S=G.secret||{}, J=G.joueurs.map(j=>[j.x|0,j.y|0,j.z|0].join(',')).join(' | ');
+    const pile=(new Error().stack||'').split('\n').slice(1,7).map(l=>l.trim().slice(-90)).join('\n');
+    const d=document.createElement('pre');
+    d.style.cssText='position:fixed;inset:8px;z-index:99999;background:#000d;color:#9f9;font:11px/1.3 monospace;padding:8px;overflow:auto;white-space:pre-wrap';
+    d.textContent=['DIAG '+src,'t='+G.t.toFixed(2)+' etat='+G.etat+' niveau='+(G.niveau&&G.niveau.id),
+      'net='+NET.actif+'/'+NET.role+' vitesse='+TRICHE.vitesse,'S='+(S.x|0)+','+(S.y|0)+' att='+S.attente+' arme='+S.arme,
+      'joueurs='+J,'depart='+(G.depart&&((G.depart.x|0)+','+(G.depart.y|0))),'colosse='+!!G.colosse,
+      'eff='+JSON.stringify(G.effondrement),'ua='+navigator.userAgent,pile].join('\n');
+    d.id='diag-sol'; d.onclick=()=>d.remove(); document.body.appendChild(d);
+  }catch(e){}
+}
 function lancerEffondrement(){
+  diagnosticSol('lancerEffondrement');
   const S=G.secret, C=CFG.sousSol;
   G.effondrement={ x:S.x, y:S.y, t:0, duree:C.effondrement.duree, pret:false };
   G.annonce={txt:'LE SOL CÈDE…', t:0}; sfx('boss'); G.shake=Math.max(G.shake,5);
