@@ -8003,7 +8003,15 @@ function majSecret(dt,vivants){
   if(!S.precharge && vivants.some(j=>dist2(j.x,j.y,S.x,S.y)<900*900)){ S.precharge=true; chargerSousSol().catch(()=>{}); }
   if(G.colosse) return;                                      // jamais pendant un combat de gardien
   const dedans=vivants.some(j=>dist2(j.x,j.y,S.x,S.y)<C.chapelle.rayon**2 && j.z<5);
-  S.attente = dedans ? S.attente+dt : Math.max(0,S.attente-dt*2);
+  /* La chapelle ne cède qu'à qui y est ARRIVÉ : il faut d'abord s'en être éloigné (ou ne pas y avoir
+     commencé), et jamais dans les premières secondes. Sans cela, une chapelle mal placée au départ
+     (ou un premier pas de temps démesuré) ferait tomber toute partie dans la caverne. */
+  if(!S.arme && G.t>3 && !vivants.some(j=>dist2(j.x,j.y,S.x,S.y)<(C.chapelle.rayon*3)**2)) S.arme=true;
+  if(dedans && !S.arme && !S.alerte){
+    S.alerte=true;
+    console.warn('chapelle active au départ', {t:G.t, S:[S.x,S.y], joueurs:vivants.map(j=>[j.x,j.y,j.z]), depart:G.depart, niveau:G.niveau&&G.niveau.id});
+  }
+  S.attente = dedans && S.arme ? S.attente+dt : Math.max(0,S.attente-dt*2);
   if(S.attente>=C.chapelle.attente) lancerEffondrement();
 }
 function lancerEffondrement(){
