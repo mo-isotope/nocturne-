@@ -529,10 +529,12 @@ window.CHARGEMENT = (function(){
   <div class="t-sec">PARTIE</div>
   <div class="t-ligne">
     <button data-t="seuil">Aller au Seuil</button>
+    <button data-t="chapelle">Aller à la chapelle</button>
     <button data-t="gardien">Achever le gardien</button>
     <button data-t="chapitre">Chapitre suivant</button>
     <button data-t="purge">Purger l'écran</button>
     <button data-t="cloportes">Vague de cloportes</button>
+    <button data-t="zero">Mettre à zéro les cheats</button>
   </div>
   <div class="t-sec">AFFICHAGE</div>
   <div class="t-ligne">
@@ -794,7 +796,7 @@ const CFG = {
                  trot:{ foulee:70, repos:0.2, vMarche:30, rebond:1.2, tangue:0.03 } },
     champignon:{ nom:'Champignon errant',     sprite:'s_champignon', pv:100, vitesse:50, degats:9,  taille:19, xp:5, erratique:1,
                  trot:{ foulee:46, repos:0.3, vMarche:28, rebond:1.6, tangue:0.05 } },
-    golem:     { nom:'Golem de cristal',      sprite:'s_golem',    pv:560, vitesse:34,  degats:30, taille:57, xp:22,
+    golem:     { nom:'Golem de cristal',      sprite:'s_golem',    pv:1000, vitesse:34,  degats:30, taille:57, xp:22,
                  trot:{ foulee:90, repos:0.15, vMarche:20, rebond:1.0, tangue:0.02 } },
     cerbere:   { nom:'Cerbère',               sprite:'b_cerbere',  pv:4200, vitesse:58, degats:26, taille:110, xp:300,
                  comportement:'cerbere',
@@ -818,22 +820,22 @@ const CFG = {
        arene, cellule   la caverne tient dans arene px de côté, en cellules de 'cellule' px
        remplissage      part de roche au départ du tirage de la caverne (plus haut = plus étroit)
        duree            secondes pour atteindre l'escalier ; passé ce délai, la caverne s'écroule
-       eboulement       part des PV max que chacun perd par seconde après la limite
        chapelle         rayon de la zone de la porte, et temps à y rester avant l'effondrement
        effondrement     durée de l'animation avant la chute
-       apparition       cadence et plafond des ennemis ; vagues : qui, et à partir de quand (secondes de caverne)
-       cerbere          distance à laquelle il se réveille ; plante : rayon de cueillette
+       apparition       cadence ; plafond = base + parNiveau × niveau des armes (au plus max) ; vagues : qui, à partir de quand (secondes de caverne),
+                        poids du tirage (p) et nombre maximum en même temps (max)
+       cerbere          nombre de golems à tuer pour qu'il arrive, et à quelle distance ; plante : rayon de cueillette
+       chapelle.site    laquelle des trois places possibles (0 à 2) : tirée à chaque partie, envoyée aux invités
        geant            ce que donne la plante : échelle d'affichage, rayon de collision, bonus
                         (duree 0 = jusqu'à la fin de la partie)                               */
   sousSol:{
     arene:3200, cellule:46, remplissage:0.455, bord:64,
-    duree:210, eboulement:0.05,
-    chapelle:{ rayon:64, attente:1.3, porte:[-0.28,-0.06] },
+    chapelle:{ rayon:64, attente:1.3, porte:[-0.28,-0.06], site:0 },
     effondrement:{ duree:3.2 },
-    apparition:{ debut:1.4, parMinute:1.2, max:30, distance:[380,760] },
-    vagues:[ {t:0,e:'araignee'}, {t:22,e:'mineur'}, {t:50,e:'champignon'}, {t:90,e:'golem'} ],
+    apparition:{ debut:0.9, parMinute:0.8, base:6, parNiveau:1.5, max:44, distance:[380,760] },
+    vagues:[ {t:0,e:'araignee',p:0.6,max:5}, {t:0,e:'mineur',p:0.3,max:4}, {t:18,e:'champignon',p:1}, {t:30,e:'golem',p:1.3,max:3} ],
     coffres:5,
-    cerbere:{ reveil:520 }, plante:{ rayon:46 },
+    cerbere:{ golems:5, distance:[520,780] }, plante:{ rayon:46 },
     geant:{ echelle:1.5, collision:1.5, degats:1.6, pv:1.5, vitesse:1.05, aimant:1.5, duree:0 },
     niveau:{ id:'sous-sol', nom:'Le Sous-sol', sol:'#141b27', grains:[], teinte:'#7fb2cc', modif:null, duree:900,
       decor:[], densite:0, particules:{type:'poussiere', couleur:'#726f8c'},
@@ -3062,12 +3064,27 @@ function genererDecor(L){
   // la carte a été agrandie : le décor suit la surface, pas le côté
   const S=(A/4200)**2;
   const B=P.laby.boite, MARGE_LABY=90;
-  const horsZone=(x,y)=>
+  const horsLaby=(x,y)=>
     x>BORD_DECOR && y>BORD_DECOR && x<A-BORD_DECOR && y<A-BORD_DECOR &&
     !(x>B.x-MARGE_LABY && x<B.x+B.w+MARGE_LABY && y>B.y-MARGE_LABY && y<B.y+B.h+MARGE_LABY);
+  const horsZone=(x,y)=>horsLaby(x,y) && !zonesLibres.some(z=>dist2(z.x,z.y,x,y)<z.r*z.r);   // zonesLibres : plus bas
   let id=0;
   const POINTS_CLES=[P.depart, ...P.seuils];
   const pointCle=(x,y)=>POINTS_CLES.some(q=>dist2(q.x,q.y,x,y)<170*170);
+  /* La chapelle du passage secret : trois places possibles, choisies d'abord (donc les mêmes chez tous), très
+     loin du départ, des Seuils et du labyrinthe. La partie en retient une (CFG.sousSol.chapelle.site, tiré au
+     lancement) et la tient dégagée : aucun décor ne se pose dans son rayon (zonesLibres). */
+  const sitesChap=[];
+  for(let essai=0; essai<1500 && sitesChap.length<3; essai++){
+    const x=BORD_DECOR+500+r()*(A-2*BORD_DECOR-1000), y=BORD_DECOR+500+r()*(A-2*BORD_DECOR-1000);
+    if(Math.hypot(x-P.depart.x,y-P.depart.y)<2000) continue;
+    if(POINTS_CLES.some(q=>Math.hypot(x-q.x,y-q.y)<1000)) continue;
+    if(x>B.x-600 && x<B.x+B.w+600 && y>B.y-600 && y<B.y+B.h+600) continue;
+    if(sitesChap.some(q=>Math.hypot(x-q.x,y-q.y)<1500)) continue;
+    sitesChap.push({x,y});
+  }
+  const siteChap=sitesChap.length ? sitesChap[(CFG.sousSol.chapelle.site|0)%sitesChap.length] : null;
+  const zonesLibres=siteChap ? [{x:siteChap.x,y:siteChap.y,r:470}] : [];
   const poser=(nom,x,y,ech,extra,force)=>{
     if(!force){
       // les décors se traversent : ils peuvent pousser partout. Seul un mur plein
@@ -3075,8 +3092,8 @@ function genererDecor(L){
       if(nom==='d_mur' && distChemin(x,y)<DEGAGE) return null;
       // un décor plein ne se pose ni sur le départ, ni sur un Seuil : on doit pouvoir y entrer
       if(CFG.decors.solides[nom] && pointCle(x,y)) return null;
-      // ni dans la brume des confins, ni dans le labyrinthe
-      if(!horsZone(x,y)) return null;
+      // ni dans la brume des confins, ni dans le labyrinthe, ni dans la zone dégagée de la chapelle secrète
+      if(!((extra&&extra.secret) ? horsLaby(x,y) : horsZone(x,y))) return null;
     }
     // une flaque doit être franchement plus large qu'un objet de décor
     if(nom==='d_mare' && ech==null) ech=7+r()*5;
@@ -3282,27 +3299,7 @@ function genererDecor(L){
           et des Seuils. G.secret garde sa zone — la porte, où il faut rester pour que le sol cède. */
   G.secret=null;
   if(SPR.d_chapelle_lumineuse || CFG.decors.regles.d_chapelle_lumineuse){
-    let chap=null;
-    for(let essai=0; essai<160 && !chap; essai++){
-      const x=BORD_DECOR+300+r()*(A-2*BORD_DECOR-600), y=BORD_DECOR+300+r()*(A-2*BORD_DECOR-600);
-      if(Math.hypot(x-P.depart.x,y-P.depart.y)<1600) continue;
-      if(P.seuils.some(q=>Math.hypot(x-q.x,y-q.y)<900)) continue;
-      if(centresEns.some(c=>dist2(c.x,c.y,x,y)<(c.ray+260)**2)) continue;
-      // la porte : rien de plein tout près, sinon on ne pourrait pas s'y tenir
-      const sc=SPR.d_chapelle_lumineuse, pp=CFG.sousSol.chapelle.porte;
-      if(sc){
-        const hh=sc.taille*CFG.decors.regles.d_chapelle_lumineuse.ech[0], ll=hh*sc.w/sc.h;
-        const zx=x+pp[0]*ll, zy=y+pp[1]*hh;
-        if(G.murs.some(m=>zx>m.x-78 && zx<m.x+m.w+78 && zy>m.y-78 && zy<m.y+m.h+78)) continue;
-        const gx=(zx/CELL)|0, gy=(zy/CELL)|0; let gene=false;
-        for(let i=gx-1;i<=gx+1&&!gene;i++) for(let j=gy-1;j<=gy+1&&!gene;j++){
-          const l=grilleD.get(i*1024+j); if(!l) continue;
-          for(const q of l) if(CFG.decors.solides[q.nom] && dist2(q.x,q.y,zx,zy)<(q.em+84)**2){ gene=true; break; }
-        }
-        if(gene) continue;
-      }
-      chap=placer('d_chapelle_lumineuse',x,y,null,{ secret:true, flip:false });   // jamais en miroir : la porte est à gauche
-    }
+    const chap=siteChap ? placer('d_chapelle_lumineuse',siteChap.x,siteChap.y,null,{ secret:true, flip:false }) : null;   // jamais en miroir : la porte est à gauche
     if(chap){
       const s=SPR.d_chapelle_lumineuse, larg=s?chap.h*s.w/s.h:chap.h*0.6, po=CFG.sousSol.chapelle.porte;
       G.secret={ o:chap, x:chap.x+po[0]*larg, y:chap.y+po[1]*chap.h, etat:'actif', attente:0, precharge:false };
@@ -3685,6 +3682,8 @@ function demarrer(){
   cuireLiseres(TEINTE_RIM);
   G.teinteCh=CFG.chapitres[0].teinte;
   G.murs=[]; G.salles=[]; G.decals=[]; G.lampes=[];
+  if(!(NET.actif && NET.role==='invite')) CFG.sousSol.chapelle.site=(Math.random()*3)|0;   // l'invité reçoit celui de l'hôte
+  G.cerbereTue=false;
   G.etage=0; G.arene=null; G.bordJ=null; G.sous=null; G.surface=null; G.plante=null; G.effondrement=null; G.niveauSurface=null; G.secret=null;
   G.seuils=null; G.trace=null; G.seuilPris=false;
   G.decor=genererDecor(L); G.brisables=G.decor.filter(o=>o.brisable && !o.mur);
@@ -3710,7 +3709,7 @@ function demarrer(){
   G.majZone();
   if(NET.actif && NET.role==='hote')
     envoyer({t:'go', n:CLES_NIVEAUX.indexOf(L.id), d:CLES_DIFF.indexOf(choixDiff),
-             p:[CLES_PERSOS.indexOf(choixPerso[0]), CLES_PERSOS.indexOf(choixPerso[1])]});
+             p:[CLES_PERSOS.indexOf(choixPerso[0]), CLES_PERSOS.indexOf(choixPerso[1])], c:CFG.sousSol.chapelle.site});
   musiqueNiveau(L);
   majFiches(); G.etat='jeu'; dernier=performance.now();
 }
@@ -4057,6 +4056,7 @@ function tuer(e){
   G.ennemis.splice(i,1); G.tues++;
   G.gemmes.push({x:e.x,y:e.y,v:e.xp,r:e.boss?9:4.5,boss:e.boss,ph:Math.random()*6.28});
   eclats(e.x,e.y,e.boss?40:8,PAL.sang,e.boss?260:150);
+  if(G.etage && G.sous && e.def===CFG.ennemis.golem && ++G.sous.golems>=CFG.sousSol.cerbere.golems) appelerCerbere();
   if(e.cerbere){ G.colosse=null; apparaitrePlante(e.x,e.y); }
   else if(e.colosse){
     G.colosse=null;
@@ -5047,6 +5047,19 @@ function appliquerTriche(code, cible, v){
     });
     const moi=G.joueurs[NET.actif?NET.moi:0]; if(moi){ G.cam.x=moi.x; G.cam.y=moi.y; }
   }
+  if(code==='chapelle'){
+    // à la surface : devant la chapelle secrète, à portée de marche de sa porte (assez loin pour qu'elle s'arme)
+    const z=!G.etage && G.secret;
+    if(z) G.joueurs.forEach((j,i)=>{
+      j.x=z.x+(i?30:-30); j.y=z.y+270; j.vx=0; j.vy=0; decoincer(j,j.r);
+    });
+    const moi=G.joueurs[NET.actif?NET.moi:0]; if(moi){ G.cam.x=moi.x; G.cam.y=moi.y; }
+  }
+  if(code==='zero'){
+    // les interrupteurs et la vitesse du temps reviennent à leur état normal (armes et capacités, elles, restent)
+    G.joueurs.forEach(j=>{ j.dieu=false; j.ultimesInfinis=false; });
+    TRICHE.vitesse=1;
+  }
   if(code==='gardien'){ if(G.colosse) tuer(G.colosse); }
   if(code==='chapitre'){
     // on passe le chapitre en entier : gardien invoqué puis abattu sur-le-champ
@@ -5342,7 +5355,7 @@ function maj(dt){
     if(j.aimant) avancerAimant(j,U,dt);
     if(j.tornade) avancerTornade(j,U,dt);
     if(j.atterri>0) j.atterri-=dt;
-    const d=(G.effondrement && G.effondrement.t>1.0) ? {x:0,y:0} : dirJoueur(j.idx);   // le sol cède : plus rien ne répond
+    const d=((G.effondrement && G.effondrement.t>1.0) || (G.fondu && G.fondu.phase==='noir' && G.fondu.t>0.3)) ? {x:0,y:0} : dirJoueur(j.idx);   // le sol cède : plus rien ne répond
     let v=j.vitesse*j.mult.vitesse;
     if(j.saut>0) v*=CFG.saut.elan;          // on couvre trois fois plus de terrain
     if(mod==='verglas'){ j.vx+=(d.x*v-j.vx)*Math.min(1,dt*2.2); j.vy+=(d.y*v-j.vy)*Math.min(1,dt*2.2); }
@@ -5432,6 +5445,12 @@ function maj(dt){
   }
   if(G.colosse && G.colosse.pv<=0) G.colosse=null;
   if(G.annonce){ G.annonce.t+=dt; if(G.annonce.t>3.4) G.annonce=null; }
+  if(G.bandeau){ G.bandeau.t+=dt; if(G.bandeau.t>G.bandeau.duree) G.bandeau=null; }
+  if(G.fondu){                                   // retour dans la cave : écran noir, puis arrivée
+    const F=G.fondu; F.t+=dt;
+    if(F.phase==='noir' && F.t>=F.duree){ F.phase='sortie'; F.t=0; descendre(); }
+    else if(F.phase==='sortie' && F.t>=0.9) G.fondu=null;
+  }
 
   const g=grilleCibles(44);            // une seule construction par image
   G.grille=g;
@@ -5444,10 +5463,6 @@ function maj(dt){
       e.apparition-=dt;
       if(e.apparition<=0){ sfx('mal'); eclats(e.x,e.y,10,PAL.sang,150); }
       continue;                       // immobile et inoffensif tant qu'il se forme
-    }
-    if(e.dormant){                    // Cerbère dort dans son antre jusqu'à ce qu'on s'approche
-      if(!vivants.some(j=>dist2(e.x,e.y,j.x,j.y)<CFG.sousSol.cerbere.reveil**2)) continue;
-      e.dormant=false; G.colosse=e; G.shake=Math.max(G.shake,12); G.annonce={txt:e.nom, t:0}; sfx('boss');
     }
     if(e.vol){ volerEnnemi(e,dt,g); continue; }   // projeté par l'aimant : il ne mord pas
     if(e.def.rapide && Math.random()<0.5) eclats(e.x,e.y,1,PAL.sangC,40);
@@ -5877,7 +5892,6 @@ function instantane(){
      l'escalier, la plante, et la progression de l'effondrement. L'invité refait la bascule
      lui-même quand l'étage change : le décor se régénère à l'identique chez lui. */
   s.Y=G.etage||0;
-  if(G.etage && G.sous) s.Ts=r(Math.max(0,G.sous.limite-G.t)*10)/10;
   if(G.plante) s.Pl=[r(G.plante.x),r(G.plante.y),r(G.plante.t*10)/10];
   if(G.effondrement) s.Ef=[r(G.effondrement.t*100)/100, r(G.effondrement.duree*100)/100];
   /* Sans ça, l'invité ne voyait jamais ses armes changer : ses fiches
@@ -6009,7 +6023,6 @@ function appliquer(s){
       }
     } else if(G.etage) remonter(null);
   }
-  if(G.etage===1 && G.sous && s.Ts!==undefined) G.sous.limite=G.t+s.Ts;
   if(s.Pl){
     if(!G.plante) G.plante={ type:'plante', x:0, y:0, t:0, duree:6 };
     G.plante.x=s.Pl[0]; G.plante.y=s.Pl[1]; G.plante.t=s.Pl[2];
@@ -6105,7 +6118,7 @@ function recevoir(brut){
     $('menu').classList.add('cache'); $('reseau').classList.add('cache');
     choixNiveau=CLES_NIVEAUX[m.n]; choixDiff=CLES_DIFF[m.d];
     choixPerso[0]=CLES_PERSOS[m.p[0]]; choixPerso[1]=CLES_PERSOS[m.p[1]];
-    nbJoueurs=2; demarrer(); return;
+    nbJoueurs=2; CFG.sousSol.chapelle.site=m.c|0; demarrer(); return;
   }
   if(m.t==='casse'){                                // décor détruit chez l'hôte
     const o=G.decor.find(d=>d.id===m.id);
@@ -7591,18 +7604,19 @@ function rendre(dt){
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
 
-  /* le sous-sol : le temps qui reste pour atteindre l'escalier */
-  if(G.etage && G.sous){
-    const reste=Math.max(0,G.sous.limite-G.t), urgent=reste<30, m=Math.floor(reste/60), sc=Math.floor(reste%60);
-    ctx.textAlign='center';
-    ctx.font='600 12px "IBM Plex Mono", monospace';
-    const txt=reste>0 ? 'ESCALIER · '+m+':'+String(sc).padStart(2,'0') : 'LA CAVERNE S’ÉCROULE';
-    const clign=urgent ? 0.65+0.35*Math.sin(G.t*8) : 1;
-    ctx.globalAlpha=clign;
-    const yT=Math.max(74,Math.min(98,H*0.19))+66;                // sous la boussole et sa distance, hors de la barre du boss
-    ctx.fillStyle='rgba(12,10,19,.85)'; ctx.fillText(txt,W/2+1,yT+1);
-    ctx.fillStyle=urgent?PAL.sang:PAL.os; ctx.fillText(txt,W/2,yT);
+  /* le bandeau du gardien : discret, sous la boussole */
+  if(G.bandeau){
+    const k=G.bandeau.t, a=Math.min(1,k/0.6,(G.bandeau.duree-k)/1.2)*0.7;
+    ctx.globalAlpha=Math.max(0,a); ctx.textAlign='center';
+    ctx.font='500 11px "IBM Plex Mono", monospace';
+    const yB=Math.max(74,Math.min(98,H*0.19))+66;
+    ctx.fillStyle='rgba(12,10,19,.8)'; ctx.fillText(G.bandeau.txt,W/2+1,yB+1);
+    ctx.fillStyle=PAL.osS; ctx.fillText(G.bandeau.txt,W/2,yB);
     ctx.globalAlpha=1; ctx.textAlign='left';
+  }
+  if(G.fondu){
+    const F=G.fondu, a=F.phase==='noir' ? Math.min(1,F.t/(F.duree*0.7)) : Math.max(0,1-F.t/0.9);
+    ctx.fillStyle='#000'; ctx.globalAlpha=a; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
   }
 
   /* sticks virtuels */
@@ -7883,11 +7897,10 @@ function faireRoche(gen){
 
 function descendre(){
   if(G.etage || !G.secret) return;
-  const C=CFG.sousSol, z=G.secret;
-  // le trou reste à la surface, la chapelle s'éteint
-  G.decor.push({ type:'decor', id:900001, nom:'d_trou', x:z.x, y:z.y+DECAL_TROU, h:SPR.d_trou?SPR.d_trou.taille*3.2:128, flip:false, ph:0, flash:0, plat:true });
-  z.o.eteinte=true; z.etat='utilise';
-  G.lampes=G.lampes.filter(p=>p.o!==z.o);
+  const C=CFG.sousSol, z=G.secret; z.deja=true;
+  // le trou reste à la surface ; la chapelle, elle, reste allumée : on peut redescendre
+  if(!G.decor.some(o=>o.id===900001))
+    G.decor.push({ type:'decor', id:900001, nom:'d_trou', x:z.x, y:z.y+DECAL_TROU, h:SPR.d_trou?SPR.d_trou.taille*3.2:128, flip:false, ph:0, flash:0, plat:true });
   const S={}; for(const k of CHAMPS_SURFACE) S[k]=G[k];
   S.joueurs=G.joueurs.map(j=>({x:j.x,y:j.y})); S.cam={x:G.cam.x,y:G.cam.y}; S.zone=$('zone').textContent;
   G.surface=S; G.niveauSurface=G.niveau;
@@ -7907,15 +7920,11 @@ function descendre(){
     j.chalumeau=null; j.souffle=null; j.invul=Math.max(j.invul,1.5); j.tombe=0;
   });
   G.cam={x:d.x,y:d.y}; RECUL=1;
-  const def=CFG.ennemis.cerbere, D=G.diff||{pv:1,degats:1}, pv=def.pv*D.pv;
-  const cb={ type:'ennemi', def, cle:'cerbere', colosse:true, cerbere:true, boss:true, dormant:true, nom:def.nom,
-    x:gen.antre.x, y:gen.antre.y, pv, pvMax:pv, r:def.taille, vitesse:def.vitesse, degats:def.degats*D.degats, xp:def.xp,
-    flash:0, phase:0, flip:true, anim:0, minuteur:3, charge:0 };
-  G.ennemis.push(cb);
-  G.sous={ gen, t0:G.t, limite:G.t+C.duree, sortie:gen.sortie, antre:gen.antre, libres:gen.libres, acc:0,
-           cerbere:cb, ebouli:false, tic:0, roche:faireRoche(gen) };
+  G.sous={ gen, t0:G.t, sortie:gen.sortie, antre:gen.antre, libres:gen.libres, acc:0,
+           golems:0, cerbereVenu:false, roche:faireRoche(gen) };
   $('zone').textContent='Le Sous-sol';
-  G.annonce={txt:'LE SOUS-SOL', t:0}; G.shake=14; G.flash=0.6;
+  G.annonce={txt:'LE SOUS-SOL', t:0}; G.shake=G.fondu?0:14; G.flash=G.fondu?0:0.6;
+  G.bandeau={txt:'Le gardien se réveille...', t:0, duree:3};
   majFiches();
 }
 
@@ -7925,6 +7934,7 @@ function remonter(mangeur){
   for(const k of CHAMPS_SURFACE) G[k]=S[k];
   G.etage=0; G.sous=null; G.plante=null; G.niveauSurface=null;
   const z=G.secret;
+  z.etat='actif'; z.attente=0; z.arme=false;       // on peut y redescendre, après s'en être éloigné
   G.joueurs.forEach((j,i)=>{
     j.x=z.x+(i?30:-30); j.y=z.y+54; j.vx=0; j.vy=0; j.z=0; j.saut=0; j.tombe=0; j.invul=Math.max(j.invul,2);
   });
@@ -8011,6 +8021,7 @@ function majSecret(dt,vivants){
   const S=G.secret; if(!S || S.etat!=='actif') return;
   const C=CFG.sousSol;
   if(G.effondrement){ majEffondrement(dt); return; }
+  if(G.fondu) return;
   // les sprites du sous-sol pèsent lourd : on les charge dès qu'on s'approche, pas au dernier moment
   if(!S.precharge && vivants.some(j=>dist2(j.x,j.y,S.x,S.y)<900*900)){ S.precharge=true; chargerSousSol().catch(()=>{}); }
   if(G.colosse) return;                                      // jamais pendant un combat de gardien
@@ -8024,7 +8035,10 @@ function majSecret(dt,vivants){
     console.warn('chapelle active au départ', {t:G.t, S:[S.x,S.y], joueurs:vivants.map(j=>[j.x,j.y,j.z]), depart:G.depart, niveau:G.niveau&&G.niveau.id});
   }
   S.attente = dedans && S.arme ? S.attente+dt : Math.max(0,S.attente-dt*2);
-  if(S.attente>=C.chapelle.attente) lancerEffondrement();
+  if(S.attente>=C.chapelle.attente){
+    if(S.deja){ S.attente=0; G.fondu={ phase:'noir', t:0, duree:1.1 }; }   // les fois suivantes : un fondu au noir, sans chute
+    else lancerEffondrement();
+  }
 }
 function lancerEffondrement(){
   const S=G.secret, C=CFG.sousSol;
@@ -8042,11 +8056,21 @@ function majEffondrement(dt){
 }
 
 /* --- le sous-sol vit : ennemis, minuteur, escalier, plante --- */
+/* Le nombre d'ennemis de la cave suit le niveau des armes : la somme des niveaux de toutes les armes d'un
+   joueur (1 au départ), en moyenne sur les joueurs. 6 ennemis au départ, 44 au plus. */
+function niveauArmes(){
+  const js=G.joueurs.filter(j=>j.armes); if(!js.length) return 1;
+  return js.reduce((s,j)=>s+j.armes.reduce((n,a)=>n+a.niveau,0),0)/js.length;
+}
+function plafondCave(){ const a=CFG.sousSol.apparition; return Math.round(clamp(a.base+a.parNiveau*niveauArmes(), a.base, a.max)); }
 function spawnSousSol(){
   const C=CFG.sousSol, S=G.sous, tc=G.t-S.t0;
-  if(G.ennemis.length>=C.apparition.max) return;
-  const types=C.vagues.filter(v=>tc>=v.t).map(v=>v.e); if(!types.length) return;
-  const def=CFG.ennemis[types[(Math.random()*types.length)|0]];
+  if(G.ennemis.length>=plafondCave()) return;
+  const nb=(e)=>G.ennemis.reduce((n,x)=>n+(x.def===CFG.ennemis[e]?1:0),0);
+  const dispo=C.vagues.filter(v=>tc>=v.t && !(v.max && nb(v.e)>=v.max)); if(!dispo.length) return;
+  let u=Math.random()*dispo.reduce((s,v)=>s+(v.p||1),0), choisi=dispo[0];
+  for(const v of dispo){ u-=(v.p||1); if(u<=0){ choisi=v; break; } }
+  const def=CFG.ennemis[choisi.e];
   const vivants=G.joueurs.filter(j=>!j.aterre); if(!vivants.length) return;
   for(let essai=0; essai<16; essai++){
     const c=S.libres[(Math.random()*S.libres.length)|0];
@@ -8061,23 +8085,33 @@ function spawnSousSol(){
     return;
   }
 }
+/* Le cinquième golem tombé, le gardien arrive : Cerbère, le maître de la caverne, surgit à bonne distance. */
+function appelerCerbere(){
+  const C=CFG.sousSol, S=G.sous; if(!S || S.cerbereVenu || G.cerbereTue) return;
+  const vivants=G.joueurs.filter(j=>!j.aterre); if(!vivants.length) return;
+  S.cerbereVenu=true;
+  let lieu=null;
+  for(let essai=0; essai<60 && !lieu; essai++){
+    const c=S.libres[(Math.random()*S.libres.length)|0];
+    const d=Math.hypot(c.x-vivants[0].x,c.y-vivants[0].y);
+    if(d>=C.cerbere.distance[0] && d<=C.cerbere.distance[1]) lieu=c;
+  }
+  lieu=lieu||S.antre;
+  const def=CFG.ennemis.cerbere, D=G.diff||{pv:1,degats:1}, pv=def.pv*D.pv;
+  const cb={ type:'ennemi', def, cle:'cerbere', colosse:true, cerbere:true, boss:true, nom:def.nom,
+    x:lieu.x, y:lieu.y, pv, pvMax:pv, r:def.taille, vitesse:def.vitesse, degats:def.degats*D.degats, xp:def.xp,
+    flash:0, phase:0, flip:true, anim:0, minuteur:3, charge:0 };
+  G.ennemis.push(cb); G.colosse=cb;
+  G.shake=Math.max(G.shake,12); G.flash=0.4; sfx('boss');
+}
 function majSousSol(dt,vivants){
   const C=CFG.sousSol, S=G.sous, tc=G.t-S.t0;
-  S.acc+=dt*(C.apparition.debut+tc/60*C.apparition.parMinute)*(G.diff?G.diff.spawn:1);
+  S.acc+=dt*(C.apparition.debut+tc/60*C.apparition.parMinute)*(G.diff?G.diff.spawn:1)*(plafondCave()/20);   // plus d'armes : plus de monde, et plus vite
   while(S.acc>=1){ S.acc--; spawnSousSol(); }
-  // la limite de temps : passée, la caverne s'écroule sur ceux qui y restent
-  if(G.t>=S.limite){
-    if(!S.ebouli){ S.ebouli=true; G.annonce={txt:'LA CAVERNE S’ÉCROULE', t:0}; sfx('boss'); }
-    G.shake=Math.max(G.shake,3); S.tic-=dt;
-    if(S.tic<=0){
-      S.tic=1;
-      for(const j of vivants){
-        const av=j.invul; j.invul=0;
-        blesser(j, Math.max(1,Math.round(j.pvMax*C.eboulement))+j.armure);
-        j.invul=Math.min(av,0.1);
-        eclats(j.x,j.y-10,6,PAL.pierreC,160);
-      }
-    }
+  // le rappel du gardien : 3 s d'affichage, 3 s de pause, tant que Cerbère n'est pas venu
+  if(!S.cerbereVenu && !G.bandeau){
+    S.rappel=(S.rappel||0)+dt;
+    if(S.rappel>=3){ S.rappel=0; G.bandeau={txt:'Le gardien se réveille...', t:0, duree:3}; }
   }
   // l'escalier : retour à la surface, sans récompense
   if(vivants.some(j=>dist2(j.x,j.y,S.sortie.x,S.sortie.y)<135*135)){ remonter(null); return; }

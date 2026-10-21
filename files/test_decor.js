@@ -182,5 +182,23 @@ if(require.main===module){
     verdict(a.D>=44, L.id+' : le chemin du départ à l\'escalier est trop court ('+a.D+' cases)');
     console.log('OK    sous-sol '+L.id.padEnd(8)+' '+a.decor.length+' décors, '+a.murs.length+' pieds, escalier à '+a.D+' cases, '+a.coffres.length+' coffres');
   }
+  /* la chapelle : trois places possibles par carte, toutes isolées, atteignables, et celle de la partie se change */
+  for(const L of CFG.niveaux){
+    const pos=[];
+    for(let s=0;s<3;s++){
+      CFG.sousSol.chapelle.site=s;
+      const d=genererDecor(L), S=G.secret;
+      verdict(!!S, L.id+' site '+s+' : pas de chapelle');
+      if(!S) continue;
+      pos.push([Math.round(S.o.x),Math.round(S.o.y)]);
+      const voisin=d.filter(o=>o!==S.o && !o.secret && Math.hypot(o.x-S.o.x,o.y-S.o.y)<380);
+      verdict(voisin.length===0, L.id+' site '+s+' : '+voisin.length+' décor(s) à moins de 380 px de la chapelle ('+voisin.slice(0,3).map(o=>o.nom).join(',')+')');
+      verdict(Math.hypot(S.o.x-G.depart.x,S.o.y-G.depart.y)>=2000, L.id+' site '+s+' : trop près du départ');
+    }
+    const uniques=new Set(pos.map(q=>q.join(',')));
+    verdict(uniques.size===3, L.id+' : les trois places ne sont pas distinctes ('+[...uniques].join(' ; ')+')');
+    console.log('OK    chapelle '+L.id.padEnd(8)+' '+pos.map(q=>q.join(',')).join('  |  '));
+  }
+  CFG.sousSol.chapelle.site=0;
   process.exit(ok?0:1);
 }
