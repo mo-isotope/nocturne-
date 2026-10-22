@@ -828,7 +828,7 @@ const CFG = {
                         (duree 0 = jusqu'à la fin de la partie)                               */
   sousSol:{
     arene:3200, cellule:46, remplissage:0.455, bord:64,
-    chapelle:{ rayon:64, attente:1.3, porte:[-0.28,-0.06], site:0 },
+    chapelle:{ rayon:64, attente:0.6, porte:[-0.28,-0.06], site:0 },
     indice:{ debut:180, dispersion:90, rafales:[ {e:'araignee',n:10,pas:0.7}, {e:'mineur',n:15,pas:0.7} ], golem:{pas:15, max:8, total:20} },
     effondrement:{ duree:3.2 },
     apparition:{ debut:0.9, parMinute:0.8, base:6, parNiveau:1.5, max:44, distance:[380,760] },
@@ -7622,7 +7622,7 @@ function rendre(dt){
 
   /* la boussole : une flèche qui tourne vers le Seuil du chapitre en cours.
      Elle s'efface dès qu'un gardien est là — l'objectif, alors, c'est lui. */
-  const cibleBoussole = G.etage ? (G.sous && (G.plante && G.plante.t>=G.plante.duree ? G.plante : G.sous.sortie)) : (G.seuils && G.seuils[G.chapitre]);
+  const cibleBoussole = G.etage ? (G.sous && (G.plante && G.plante.t>=G.plante.duree ? G.plante : (G.sous.verrou ? null : G.sous.sortie))) : (G.seuils && G.seuils[G.chapitre]);
   if(G.etat==='jeu' && cibleBoussole && (G.etage || (!G.colosse && !G.seuilPris))){
     const s=cibleBoussole;
     const moi=(NET.actif?G.joueurs[NET.moi]:null)
@@ -7963,7 +7963,7 @@ function faireRoche(gen){
 
 function descendre(){
   if(G.etage || !G.secret) return;
-  const C=CFG.sousSol, z=G.secret; z.deja=true;
+  const C=CFG.sousSol, z=G.secret, premiere=!z.deja; z.deja=true;
   // le trou reste à la surface ; la chapelle, elle, reste allumée : on peut redescendre
   if(!G.decor.some(o=>o.id===900001))
     G.decor.push({ type:'decor', id:900001, nom:'d_trou', x:z.x, y:z.y+DECAL_TROU, h:SPR.d_trou?SPR.d_trou.taille*3.2:128, flip:false, ph:0, flash:0, plat:true });
@@ -7987,7 +7987,7 @@ function descendre(){
   });
   G.cam={x:d.x,y:d.y}; RECUL=1;
   G.sous={ gen, t0:G.t, sortie:gen.sortie, antre:gen.antre, libres:gen.libres, acc:0,
-           golems:0, cerbereVenu:false, roche:faireRoche(gen) };
+           golems:0, cerbereVenu:false, verrou:premiere, roche:faireRoche(gen) };   // la première chute : pas de remontée avant le gardien
   $('zone').textContent='Le Sous-sol';
   G.annonce={txt:'LE SOUS-SOL', t:0}; G.shake=G.fondu?0:14; G.flash=G.fondu?0:0.6;
   G.bandeau={txt:'Le gardien se réveille...', t:0, duree:3};
@@ -8246,7 +8246,8 @@ function majSousSol(dt,vivants){
     if(S.rappel>=3){ S.rappel=0; G.bandeau={txt:'Le gardien se réveille...', t:0, duree:3}; }
   }
   // l'escalier : retour à la surface, sans récompense
-  if(vivants.some(j=>dist2(j.x,j.y,S.sortie.x,S.sortie.y)<135*135)){ remonter(null); return; }
+  if(S.verrou && S.cerbereVenu) S.verrou=false;           // le gardien est venu : l'escalier s'ouvre
+  if(!S.verrou && vivants.some(j=>dist2(j.x,j.y,S.sortie.x,S.sortie.y)<135*135)){ remonter(null); return; }
   // la plante : elle pousse d'abord, puis on peut la cueillir
   if(G.plante){
     const P=G.plante; P.t+=dt;
